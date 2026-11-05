@@ -106,3 +106,13 @@ def test_the_fanout_packs_declare_their_reviewers(
 def test_the_single_agent_skills_are_not_fanout_skills(name: str, tmp_path: Path) -> None:
     shutil.copytree(SHIPPED / name, tmp_path / ".vibe" / "skills" / name)
     assert fanout(name, tmp_path, home=tmp_path / "nohome") is None
+
+
+@pytest.mark.parametrize(
+    "relative",
+    ["simplify/SKILL.md", "simplify-fanout/SKILL.md", "simplify-fanout/angles/dead-weight.md"],
+)
+def test_cleanup_skills_never_delete_a_comment_that_contradicts_the_code(relative: str) -> None:
+    """A real run deleted a docstring that disagreed with the code, hiding the bug it pointed at."""
+    text = " ".join((SHIPPED / relative).read_text().split())
+    assert "disagrees with the code" in text

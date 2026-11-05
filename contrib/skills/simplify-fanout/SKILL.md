@@ -15,6 +15,8 @@ the changes. Nobody can answer questions, and your final message is all the revi
 - **Never ask questions.** When something is ambiguous, take the most conservative reading and say so.
 - **Behavior stays identical.** Public names and signatures, output and file formats, error messages
   and anything a test asserts must not change, unless the task says otherwise.
+- **A comment or docstring that disagrees with the code is a bug signal, not dead weight.** Never
+  delete or rewrite it to make the two agree. Report the mismatch under "Noticed, not fixed".
 - **Stay inside the target** the task names (a git range or a list of files). Edit nothing else.
   Never commit, push or create branches: the server commits your work.
 - **Run only commands the task gives you** (for example a test command). Otherwise do not run the

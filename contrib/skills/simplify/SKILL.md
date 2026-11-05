@@ -18,6 +18,8 @@ can answer questions, and your final report is all the reviewer reads about your
   scope at all, change nothing and say so.
 - **Keep behavior identical.** Public names and signatures, output and file formats, error messages
   and anything a test asserts stay as they are, unless the task says otherwise.
+- **A comment or docstring that disagrees with the code is a bug signal, not dead weight.** Never
+  delete or rewrite it to make the two agree. Report the mismatch under "Risks".
 - **Run only what the task tells you to run.** The task may give a test or lint command: run it
   before and after your edits. Otherwise do not run the project's code.
 - **Follow the project.** Match the conventions of the surrounding code and of any project
