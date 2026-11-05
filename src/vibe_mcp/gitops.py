@@ -56,10 +56,11 @@ async def is_clean(cwd: Path, *, untracked: bool = False) -> bool:
     return not await git("status", "--porcelain", f"--untracked-files={mode}", cwd=cwd)
 
 
-async def add_worktree(repo: Path, path: Path, branch: str, base: str) -> None:
-    """Create `branch` at `base` and check it out in a new worktree at `path`."""
+async def add_worktree(repo: Path, path: Path, branch: str | None, base: str) -> None:
+    """Check `base` out in a new worktree at `path`, on a new `branch` (None: detached)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    await git("worktree", "add", "-q", "-b", branch, str(path), base, cwd=repo)
+    target = ["-b", branch] if branch else ["--detach"]
+    await git("worktree", "add", "-q", *target, str(path), base, cwd=repo)
 
 
 async def commit_all(worktree: Path, message: str) -> str | None:
@@ -123,10 +124,10 @@ async def _branch_exists(repo: Path, branch: str) -> bool:
     return True
 
 
-async def remove_worktree(repo: Path, path: Path, branch: str) -> None:
-    """Delete the worktree (even if dirty) and its branch. Safe to call twice."""
+async def remove_worktree(repo: Path, path: Path, branch: str | None) -> None:
+    """Delete the worktree (even if dirty) and its branch, if any. Safe to call twice."""
     if await asyncio.to_thread(path.exists):
         await git("worktree", "remove", "--force", str(path), cwd=repo)
     await git("worktree", "prune", cwd=repo)
-    if await _branch_exists(repo, branch):
+    if branch and await _branch_exists(repo, branch):
         await git("branch", "-D", branch, cwd=repo)

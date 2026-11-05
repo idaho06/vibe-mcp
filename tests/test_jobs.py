@@ -106,3 +106,31 @@ def test_prompt_is_the_spec_with_the_skill_preamble_in_front(tmp_path: Path) -> 
     skilled.save()
     loaded = load(skilled.run_dir)
     assert (loaded.skill, loaded.preamble) == (skilled.skill, skilled.preamble)
+
+
+def test_fanout_fields_default_to_an_ordinary_job(tmp_path: Path) -> None:
+    job = make(tmp_path)
+    assert (job.readonly, job.hidden, job.depends_on, job.appendix) == (False, False, (), "")
+    assert (job.parent, job.angle, job.reviewers_cost) == (None, None, 0.0)
+
+
+def test_fanout_fields_survive_a_save_and_load(tmp_path: Path) -> None:
+    job = make(
+        tmp_path,
+        readonly=True,
+        hidden=True,
+        depends_on=("aaaaaa", "bbbbbb"),
+        appendix="\n\n## Findings\n",
+        parent="cccccc",
+        angle="reuse",
+        reviewers_cost=0.09,
+    )
+    job.save()
+    loaded = load(job.run_dir)
+    assert loaded == job
+    assert isinstance(loaded.depends_on, tuple)
+
+
+def test_prompt_puts_the_appendix_after_the_spec(tmp_path: Path) -> None:
+    job = make(tmp_path, preamble="## Task\n\n", appendix="\n\n## Findings\nx")
+    assert job.prompt == "## Task\n\ndo it\n\n## Findings\nx"

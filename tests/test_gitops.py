@@ -176,3 +176,22 @@ async def test_remove_worktree_deletes_directory_and_branch(repo: Path, tmp_path
     assert sh("git", "branch", "--list", "vibe/j1", cwd=repo) == ""
     assert sh("git", "worktree", "list", "--porcelain", cwd=repo).count("worktree ") == 1
     await gitops.remove_worktree(repo, wt, "vibe/j1")  # idempotent
+
+
+async def test_a_detached_worktree_has_no_branch(repo: Path, tmp_path: Path) -> None:
+    sha = await gitops.head(repo)
+    wt = tmp_path / "wt" / "detached"
+    await gitops.add_worktree(repo, wt, None, sha)
+    assert (wt / "a.txt").read_text() == "1\n"
+    assert await gitops.current_branch(wt) == ""  # detached HEAD
+    assert await gitops.head(wt) == sha
+    assert sh("git", "for-each-ref", "refs/heads/", cwd=repo).count("\n") == 0  # only main exists
+
+
+async def test_removing_a_detached_worktree_needs_no_branch(repo: Path, tmp_path: Path) -> None:
+    wt = tmp_path / "wt" / "detached"
+    await gitops.add_worktree(repo, wt, None, "HEAD")
+    (wt / "dirty.txt").write_text("x")
+    await gitops.remove_worktree(repo, wt, None)
+    assert not wt.exists()
+    assert sh("git", "worktree", "list", "--porcelain", cwd=repo).count("worktree ") == 1

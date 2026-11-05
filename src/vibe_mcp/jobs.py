@@ -41,6 +41,14 @@ class Job:
     title: str = ""
     skill: str | None = None  # name of the skill whose text is in `preamble`
     preamble: str = ""  # goes in front of `spec` in the prompt
+    appendix: str = ""  # goes after `spec`; filled in when a fan-out merge job starts
+    # fan-out: reviewers run read-only and in parallel, then one merge job collects their reports
+    readonly: bool = False  # never commits, and does not queue behind jobs with overlapping scope
+    hidden: bool = False  # a reviewer inside a fan-out: left out of vibe_wait's default listing
+    depends_on: tuple[str, ...] = ()  # starts only once all of these jobs have ended
+    parent: str | None = None  # the merge job a reviewer reports to
+    angle: str | None = None  # the reviewer's angle
+    reviewers_cost: float = 0.0  # total cost of the reviewers, recorded on the merge job
     scope: Scope = ()
     base_job: str | None = None
     base_ref: str | None = None  # resolved when the job starts
@@ -73,8 +81,8 @@ class Job:
 
     @property
     def prompt(self) -> str:
-        """What Vibe is given: the skill (if any), then the task."""
-        return self.preamble + self.spec
+        """What Vibe is given: the skill (if any), the task, then any reviewers' findings."""
+        return self.preamble + self.spec + self.appendix
 
     @property
     def active(self) -> bool:
@@ -93,6 +101,7 @@ def load(run_dir: Path) -> Job:
     known = {f.name for f in fields(Job)}
     data = {k: v for k, v in data.items() if k in known}
     data["scope"] = tuple(data.get("scope") or ())
+    data["depends_on"] = tuple(data.get("depends_on") or ())
     data["run_dir"] = Path(data["run_dir"])
     for key in ("repo", "worktree"):
         if data.get(key):
