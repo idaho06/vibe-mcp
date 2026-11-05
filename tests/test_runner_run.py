@@ -1,6 +1,5 @@
 import asyncio
 import json
-from pathlib import Path
 
 import pytest
 
@@ -8,21 +7,9 @@ from vibe_mcp import runner
 from vibe_mcp.config import Config
 from vibe_mcp.runner import read_export
 
+from .conftest import alive, wait_for_file
+
 pytestmark = pytest.mark.anyio
-
-
-def alive(pid: int) -> bool:
-    try:
-        state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
-    except FileNotFoundError:
-        return False
-    return state != "Z"  # a zombie is dead, just not reaped yet
-
-
-async def wait_for_file(path: Path, timeout: float = 5) -> None:
-    async with asyncio.timeout(timeout):
-        while not path.exists():
-            await asyncio.sleep(0.02)
 
 
 async def test_run_executes_in_the_worktree_and_records_everything(cfg: Config, new_job) -> None:

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import shlex
 import subprocess
@@ -59,3 +60,17 @@ def new_job(cfg: Config, tmp_path: Path):
         return Job(id=job_id, run_dir=run_dir, spec=spec, worktree=worktree, **kw)
 
     return factory
+
+
+def alive(pid: int) -> bool:
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+    except FileNotFoundError:
+        return False
+    return state != "Z"  # a zombie is dead, just not reaped yet
+
+
+async def wait_for_file(path: Path, timeout: float = 5) -> None:
+    async with asyncio.timeout(timeout):
+        while not path.exists():
+            await asyncio.sleep(0.02)

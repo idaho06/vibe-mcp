@@ -102,8 +102,8 @@ def apply_export(job: Job, export: dict | None) -> None:
     job.stop_reason = export.get("stop_reason")
     job.cost_usd = float(export.get("cost_usd") or 0)
     job.tokens = int(usage.get("total_tokens") or 0) if isinstance(usage, dict) else 0
-    error = export.get("error")
-    job.error = (error if isinstance(error, str) else json.dumps(error)) if error else None
+    if error := export.get("error"):  # never erase an error recorded earlier (e.g. a hard timeout)
+        job.error = error if isinstance(error, str) else json.dumps(error)
 
 
 def final_state(exit_code: int) -> str:

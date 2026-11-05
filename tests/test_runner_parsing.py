@@ -153,6 +153,13 @@ def test_apply_export_tolerates_missing_fields_and_no_export(tmp_path: Path) -> 
     assert (job.cost_usd, job.tokens, job.exit_code, job.error) == (0.0, 0, None, None)
 
 
+def test_apply_export_keeps_an_error_recorded_earlier(tmp_path: Path) -> None:
+    job = make_job(tmp_path)
+    job.error = "killed: still running past the time limit"
+    apply_export(job, EXPORT)  # export.json reports no error of its own
+    assert job.error == "killed: still running past the time limit"
+
+
 @pytest.mark.parametrize(
     "exit_code, expected",
     [(0, "finished"), (3, "limit"), (1, "failed"), (2, "failed"), (-15, "failed")],
