@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# Run Mistral Vibe inside a bubblewrap sandbox, from the root of a git repo.
+#
+#   vibe-sandbox RUN_DIR [vibe arguments...]   run Vibe; stdin is /dev/null
+#   vibe-sandbox --check RUN_DIR               print what the sandbox can see
+#
+# RUN_DIR must be a directory you own named vibe-run.* (from mktemp).
+#
+# Writable: the repo (including its git dir), RUN_DIR, ~/.vibe (except its
+# config and trust files), and the cargo and npm caches.
+# Read-only: the system, Vibe's install, the Rust toolchain, git config.
+# Hidden: the rest of $HOME and /home, /tmp, /run, /mnt, /media, and every
+# environment variable not listed below (so no Anthropic or Claude variables).
+#
+# The network stays open because Vibe needs the Mistral API. Anything Vibe can
+# read, it could send out.
+#
+# Auth: if MISTRAL_API_KEY is set it is passed in and Vibe uses that (API
+# billing). If it is NOT set, Vibe uses the login stored in the system keyring
+# (your Mistral subscription). The keyring is reached through xdg-dbus-proxy,
+# which only allows org.freedesktop.secrets on the session bus, so the rest of
+# the bus (which could launch unsandboxed programs) stays unreachable.
+set -euo pipefail
+
+die() { echo "vibe-sandbox: $*" >&2; exit 2; }
+
+check=0
+if [ "${1:-}" = "--check" ]; then check=1; shift; fi
+
+[ $# -ge 1 ] || die "usage: vibe-sandbox [--check] RUN_DIR [vibe arguments...]"
+run=$(realpath -e -- "$1") || die "RUN_DIR not found: $1"
+shift
+[ -d "$run" ] && [ -O "$run" ] || die "RUN_DIR must be a directory you own: $run"
+case "$(basename -- "$run")" in vibe-run.*) ;; *) die "RUN_DIR must be named vibe-run.*: $run" ;; esac
+
+command -v bwrap >/dev/null || die "bwrap is not installed"
+
+top=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git repository: $PWD"
+common=$(realpath -e -- "$(git rev-parse --git-common-dir)")
+top=$(realpath -e -- "$top")
+home=$(realpath -e -- "$HOME")
+[ "$top" != "$home" ] || die "refusing to expose all of \$HOME as the repo"
+case "$home/" in "$top"/*) die "refusing a repo that contains \$HOME: $top" ;; esac
+case "$run/" in "$home"/*|/tmp/*) ;; *) die "RUN_DIR must be under \$HOME or /tmp: $run" ;; esac
+
+args=(
+  --ro-bind / /
+  --dev /dev
+  --proc /proc
+  --tmpfs /tmp
+  --tmpfs /run
+  --tmpfs /home
+  --ro-bind-try /run/systemd/resolve /run/systemd/resolve
+  --dir "$home"
+
+  # Vibe itself, and its state. Config and trust files stay read-only so a run
+  # can't widen its own permissions.
+  --ro-bind "$home/.local/bin" "$home/.local/bin"
+  --ro-bind "$home/.local/share/uv" "$home/.local/share/uv"
+  --bind "$home/.vibe" "$home/.vibe"
+  --ro-bind-try "$home/.vibe/config.toml" "$home/.vibe/config.toml"
+  --ro-bind-try "$home/.vibe/trusted_folders.toml" "$home/.vibe/trusted_folders.toml"
+
+  # Toolchains and caches. ~/.cargo is not bound whole: it can hold registry tokens.
+  --ro-bind-try "$home/.cargo/bin" "$home/.cargo/bin"
+  --bind-try "$home/.cargo/registry" "$home/.cargo/registry"
+  --bind-try "$home/.cargo/git" "$home/.cargo/git"
+  --ro-bind-try "$home/.rustup" "$home/.rustup"
+  --bind-try "$home/.npm" "$home/.npm"
+  --ro-bind-try "$home/.gitconfig" "$home/.gitconfig"
+  --ro-bind-try "$home/.config/git" "$home/.config/git"
+
+  # The work.
+  --bind "$top" "$top"
+  --bind "$common" "$common"
+  --bind "$run" "$run"
+  --chdir "$PWD"
+
+  --unshare-all
+  --share-net
+  --die-with-parent
+  --new-session
+  --clearenv
+  --setenv HOME "$home"
+  --setenv PATH "$home/.local/bin:$home/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+  --setenv LANG "${LANG:-C.UTF-8}"
+  --setenv TERM "${TERM:-dumb}"
+)
+
+if [ -n "${MISTRAL_API_KEY:-}" ]; then
+  args+=(--setenv MISTRAL_API_KEY "$MISTRAL_API_KEY")
+  echo "vibe-sandbox: auth=MISTRAL_API_KEY (API billing)" >&2
+else
+  command -v xdg-dbus-proxy >/dev/null || die "MISTRAL_API_KEY is unset and xdg-dbus-proxy is not installed (needed for keyring login)"
+  [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || die "MISTRAL_API_KEY is unset and DBUS_SESSION_BUS_ADDRESS is not set (needed for keyring login)"
+  bus="$run/bus"
+  rm -f -- "$bus"
+  xdg-dbus-proxy "$DBUS_SESSION_BUS_ADDRESS" "$bus" --filter --talk=org.freedesktop.secrets &
+  proxy_pid=$!
+  trap 'kill "$proxy_pid" 2>/dev/null || true; rm -f -- "$bus"' EXIT
+  for _ in $(seq 50); do [ -S "$bus" ] && break; sleep 0.1; done
+  [ -S "$bus" ] || die "xdg-dbus-proxy did not create $bus"
+  args+=(--setenv DBUS_SESSION_BUS_ADDRESS "unix:path=$bus")
+  echo "vibe-sandbox: auth=system keyring via filtered D-Bus proxy (subscription)" >&2
+fi
+
+# Hide removable and extra mounts, on systems that have these directories.
+for d in /mnt /media; do
+  if [ -d "$d" ]; then args+=(--tmpfs "$d"); fi
+done
+
+if [ "$check" = 1 ]; then
+  bwrap "${args[@]}" -- /bin/sh -c '
+    for p in "$HOME/.claude" "$HOME/.ssh" "$HOME/.cargo/credentials.toml" "$HOME/tmp/mistral.key" "$HOME/.gnupg"; do
+      if [ -e "$p" ]; then echo "VISIBLE  $p"; else echo "hidden   $p"; fi
+    done
+    for p in "$HOME/.vibe/config.toml" /etc/passwd; do
+      if [ -w "$p" ]; then echo "WRITABLE $p"; else echo "readonly $p"; fi
+    done
+    for p in "$PWD" "$HOME/.vibe/worktrees"; do
+      if [ -w "$p" ]; then echo "writable $p"; else echo "NOT WRITABLE $p"; fi
+    done
+    env | cut -d= -f1 | sort | tr "\n" " "; echo
+    command -v vibe git python3 || true
+    git rev-parse --abbrev-ref HEAD
+  '
+  exit $?
+fi
+
+status=0
+bwrap "${args[@]}" -- vibe --output-dir "$run/export" "$@" </dev/null || status=$?
+echo "vibe-sandbox: exit=$status export=$run/export/export.json" >&2
+python3 -I - "$run/export" >&2 <<'PY' || true
+import glob, json, os, re, sys
+export = sys.argv[1]
+names = set()
+for path in glob.glob(os.path.join(export, "session", "**", "*"), recursive=True):
+    if os.path.isfile(path):
+        with open(path, errors="replace") as f:
+            names.update(re.findall(r'"model_name":\s*"([^"]+)"', f.read()))
+with open(os.path.join(export, "export.json")) as f:
+    d = json.load(f)
+print("vibe-sandbox: model=%s outcome=%s stop_reason=%s cost_usd=%.4f total_tokens=%s" % (
+    ",".join(sorted(names)) or "unknown", d.get("outcome"), d.get("stop_reason"),
+    d.get("cost_usd") or 0, (d.get("usage") or {}).get("total_tokens")))
+PY
+exit "$status"

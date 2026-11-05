@@ -18,8 +18,12 @@ reviews while a cheaper one writes the code.
 
 - Linux, Python 3.14+, [uv](https://docs.astral.sh/uv/), git.
 - The Vibe CLI, installed and logged in.
-- A sandbox wrapper, `vibe-sandbox` by default (`sandbox_cmd` in the config). It is **not part of
-  this repository**. It must behave like this:
+- A sandbox wrapper, `vibe-sandbox` by default (`sandbox_cmd` in the config). A reference
+  implementation using [bubblewrap](https://github.com/containers/bubblewrap) is in
+  [`contrib/vibe-sandbox`](contrib/vibe-sandbox): install it with
+  `install -m755 contrib/vibe-sandbox ~/.local/bin/`. It needs `bwrap` and `python3`, plus
+  `xdg-dbus-proxy` unless `MISTRAL_API_KEY` is set (it reaches your keyring login through it). Read
+  it before use: it decides what Vibe can see and write. Any wrapper works if it behaves like this:
   - called as `vibe-sandbox RUN_DIR [vibe arguments...]` with the current directory inside a git repo;
   - `RUN_DIR` is named `vibe-run.*`, and the wrapper makes Vibe write `RUN_DIR/export/export.json`
     (Vibe's `--output-dir RUN_DIR/export`);
