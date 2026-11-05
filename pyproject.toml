@@ -1,0 +1,38 @@
+[project]
+name = "vibe-mcp"
+version = "0.1.0"
+description = "MCP server that delegates coding tasks to Mistral Vibe in sandboxed git worktrees"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "César Rodríguez", email = "cesar.idaho@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "mcp>=2.3.0",
+]
+
+[project.scripts]
+vibe-mcp = "vibe_mcp.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "anyio>=4.16.0",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["real: runs the real vibe-sandbox (set VIBE_MCP_REAL=1)"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
