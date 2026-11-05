@@ -89,7 +89,7 @@ Read `contrib/vibe-sandbox` before you rely on it: it decides what Vibe can see 
 |---|---|
 | `vibe_submit(spec, title?, scope?, base_job?, max_turns?, time_limit?, max_price?, skill?)` | Queue a task and return its job id at once. `spec` must be complete and self-contained: Vibe sees neither the chat nor your project docs. `skill` names a skill whose instructions go in front of the task (see [Skills](#skills-and-project-context)). |
 | `vibe_wait(job_ids?, timeout=120, wait_all=false)` | Block until any (or all) of the jobs end, or `timeout` seconds pass. `timeout=0` is a status check. Default: all active jobs. |
-| `vibe_result(job_id, diff=false)` | Vibe's own summary (unverified), diffstat, added files, scope violations, tokens, cost. `diff=true` adds the capped diff. |
+| `vibe_result(job_id, diff=false, full=false)` | Vibe's own summary (unverified), diffstat, added files, scope violations, tokens, cost. `diff=true` adds the capped diff. A summary longer than `max_message_chars` is cut at a line boundary with a count of what was left out; `full=true` returns all of it. |
 | `vibe_cancel(job_id)` | Cancel a queued job or kill a running one. Its worktree is kept. |
 | `vibe_apply(job_id, discard=false)` | Stage the job's changes in your checkout (`git merge --squash`, **no commit**). Conflicts are reported and nothing changes. `discard=true` removes the job's worktree and branch instead. |
 

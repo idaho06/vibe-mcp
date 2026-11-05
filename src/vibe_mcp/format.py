@@ -35,13 +35,23 @@ def status_line(job: Job, now: float | None = None) -> str:
     return f"{line} - {job.title[:40]}" if job.title else line
 
 
-def result_text(job: Job, details: Details, cfg: Config) -> str:
+def _cut(message: str, limit: int) -> str:
+    """The message cut at a line boundary, with a note saying how much was left out."""
+    if len(message) <= limit:
+        return message
+    hint = "vibe_result(job_id, full=true) returns everything"
+    cut = message.rfind("\n", 0, limit)
+    if cut <= 0:  # a single huge line: all we can do is cut it
+        return f"{message[:limit]}… [truncated; {hint}]"
+    left = len([line for line in message[cut:].splitlines() if line.strip()])
+    return f"{message[:cut]}\n[{left} more line{'s' if left != 1 else ''} omitted; {hint}]"
+
+
+def result_text(job: Job, details: Details, cfg: Config, *, full: bool = False) -> str:
     lines = [status_line(job)]
     message = job.final_message.strip()
     if message:
-        if len(message) > cfg.max_message_chars:
-            message = message[: cfg.max_message_chars] + "… [truncated]"
-        lines.append(f"vibe says: {message}")
+        lines.append(f"vibe says: {message if full else _cut(message, cfg.max_message_chars)}")
     if job.error:
         lines.append(f"error: {job.error}")
     if job.warning:

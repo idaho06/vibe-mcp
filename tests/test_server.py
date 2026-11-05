@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -227,3 +228,17 @@ async def test_valid_calls_and_unknown_tools_behave_as_before(client: Client) ->
     )
     result = await client.call_tool("no_such_tool", {})
     assert result.is_error  # still an error, not our argument check
+
+
+async def test_a_long_report_is_cut_by_line_and_full_returns_all_of_it(
+    cfg: Config, repo: Path
+) -> None:
+    report = "\n".join(f"finding {i}: " + "x" * 60 for i in range(1, 13))
+    async with Client(build_server(replace(cfg, max_message_chars=300), repo)) as client:
+        job_id = await submit_and_finish(client, {"message": report})
+
+        cut = await call(client, "vibe_result", job_id=job_id)
+        assert "more lines omitted" in cut and "full=true" in cut and "finding 12" not in cut
+
+        everything = await call(client, "vibe_result", job_id=job_id, full=True)
+        assert "finding 12" in everything and "omitted" not in everything

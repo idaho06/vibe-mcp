@@ -85,7 +85,7 @@ def test_result_text_without_changes_or_message() -> None:
 
 def test_result_text_truncates_a_long_message() -> None:
     text = result_text(finished(final_message="x" * 50), Details(), Config(max_message_chars=10))
-    assert "vibe says: " + "x" * 10 + "… [truncated]" in text
+    assert "vibe says: " + "x" * 10 + "… [truncated; vibe_result(job_id, full=true)" in text
 
 
 def test_result_text_includes_the_error_of_a_failed_job() -> None:
@@ -151,3 +151,33 @@ def test_no_cost_is_shown_while_a_merge_job_is_still_running() -> None:
     assert (
         status_line(running, now=110) == "a1b2c3 running 10s"
     )  # the merge's own cost is not known yet
+
+
+LINES = [f"finding {i}: " + "x" * 80 for i in range(1, 11)]  # ten lines of about 91 characters
+
+
+def test_a_long_report_is_cut_at_a_line_boundary_with_a_count_of_what_was_left_out() -> None:
+    message = "\n".join(LINES)
+    text = result_text(finished(final_message=message), Details(), Config(max_message_chars=400))
+    assert [line for line in LINES if line in text] == LINES[:4]  # whole lines, in order
+    assert "[6 more lines omitted; vibe_result(job_id, full=true) returns everything]" in text
+
+
+def test_one_omitted_line_is_singular() -> None:
+    text = result_text(
+        finished(final_message="\n".join(LINES[:3])), Details(), Config(max_message_chars=200)
+    )
+    assert "[1 more line omitted; vibe_result(job_id, full=true)" in text
+
+
+def test_full_returns_the_whole_message_with_no_note() -> None:
+    message = "\n".join(LINES)
+    text = result_text(
+        finished(final_message=message), Details(), Config(max_message_chars=400), full=True
+    )
+    assert LINES[-1] in text and "omitted" not in text and "truncated" not in text
+
+
+def test_a_message_within_the_limit_is_untouched() -> None:
+    text = result_text(finished(final_message="short"), Details(), Config(max_message_chars=400))
+    assert "vibe says: short" in text and "omitted" not in text

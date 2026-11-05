@@ -107,13 +107,14 @@ def build_server(cfg: Config | None = None, cwd: Path | None = None) -> MCPServe
 
     @mcp.tool(structured_output=False)
     @_tool_errors
-    async def vibe_result(job_id: str, diff: bool = False) -> str:
+    async def vibe_result(job_id: str, diff: bool = False, full: bool = False) -> str:
         """Outcome of a job: Vibe's own summary (unverified), diffstat, added files, scope
-        violations, tokens and cost. diff=true appends the diff (capped)."""
+        violations, tokens and cost. diff=true appends the diff (capped). A long summary is cut
+        at a line boundary; full=true returns all of it."""
         manager = holder["manager"]
         job = manager.get(job_id)
         details = await manager.details(job_id, with_diff=diff)
-        return result_text(job, details, manager.cfg)
+        return result_text(job, details, manager.cfg, full=full)
 
     @mcp.tool(structured_output=False)
     @_tool_errors
