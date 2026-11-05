@@ -206,7 +206,8 @@ How it behaves:
   reviewers and the merge job see the same code even if you commit meanwhile. For the same reason
   `base_job` cannot be combined with a fan-out skill.
 - **Reviewers are hidden.** `vibe_wait` without ids lists only the merge job, which shows progress
-  such as `queued (reviewers 2/5 done)`. Asking for a reviewer by its id still works.
+  such as `queued (reviewers 2/5 done)`. Its time and cost cover the whole team, counted from
+  submit. Asking for a reviewer by its id still works.
 - **Failures are tolerated.** If some reviewers fail, the merge job still runs and its prompt names
   the missing angles. If all of them fail, the merge job fails with a message saying so. Cancelling the
   merge job cancels its reviewers.

@@ -21,8 +21,9 @@ def status_line(job: Job, now: float | None = None) -> str:
     """One line: id, state, duration, live progress, cost, error, title."""
     parts = [job.id, job.state]
     if job.started_at:
+        begin = job.created_at if job.depends_on else job.started_at  # a fan-out waits for its team
         end = job.ended_at or (time.time() if now is None else now)
-        parts.append(duration(end - job.started_at))
+        parts.append(duration(end - begin))
     if job.state == "running" and job.step:
         parts.append(f"step {job.step}: {job.last_action}")
     elif job.state == "queued" and job.last_action:  # e.g. "reviewers 2/4 done" for a fan-out

@@ -181,3 +181,19 @@ def test_full_returns_the_whole_message_with_no_note() -> None:
 def test_a_message_within_the_limit_is_untouched() -> None:
     text = result_text(finished(final_message="short"), Details(), Config(max_message_chars=400))
     assert "vibe says: short" in text and "omitted" not in text
+
+
+def test_a_fanout_merge_job_reports_the_whole_wait_not_just_its_own_run() -> None:
+    merge = job(
+        state="finished", created_at=100, started_at=152, ended_at=240, depends_on=("a", "b")
+    )
+    assert status_line(merge) == "a1b2c3 finished 2m20s"  # from submit (100) to the end (240)
+    running = job(state="running", created_at=100, started_at=152, depends_on=("a", "b"))
+    assert status_line(running, now=160) == "a1b2c3 running 1m00s"
+
+
+def test_an_ordinary_job_still_counts_from_when_it_started() -> None:
+    queued_then_run = job(state="finished", created_at=100, started_at=150, ended_at=240)
+    assert (
+        status_line(queued_then_run) == "a1b2c3 finished 1m30s"
+    )  # time spent queued is not counted
