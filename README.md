@@ -18,33 +18,68 @@ reviews while a cheaper one writes the code.
 
 ## Requirements
 
-- Linux, Python 3.14+, [uv](https://docs.astral.sh/uv/), git.
-- The Vibe CLI, installed and logged in.
-- A sandbox wrapper, `vibe-sandbox` by default (`sandbox_cmd` in the config). A reference
-  implementation using [bubblewrap](https://github.com/containers/bubblewrap) is in
-  [`contrib/vibe-sandbox`](contrib/vibe-sandbox): install it with
-  `install -m755 contrib/vibe-sandbox ~/.local/bin/`. It needs `bwrap` and `python3`, plus
-  `xdg-dbus-proxy` unless `MISTRAL_API_KEY` is set (it reaches your keyring login through it). Read
-  it before use: it decides what Vibe can see and write. Any wrapper works if it behaves like this:
-  - called as `vibe-sandbox RUN_DIR [vibe arguments...]` with the current directory inside a git repo;
-  - `RUN_DIR` is named `vibe-run.*`, and the wrapper makes Vibe write `RUN_DIR/export/export.json`
-    (Vibe's `--output-dir RUN_DIR/export`);
-  - it exits with Vibe's exit code (0 finished, 3 stopped at a limit, anything else failed);
-  - it should let Vibe write only the current directory (the job's worktree) and the git directory.
-  - Keep `data_dir` short: the wrapper may create a Unix socket in `RUN_DIR` (108-character limit).
+| You need | Why | Check |
+|---|---|---|
+| **Linux** | the reference sandbox uses bubblewrap | |
+| **git 2.22+**, and a repo with **at least one commit** | each job is a worktree branched from `HEAD` | `vibe-mcp doctor` |
+| **[uv](https://docs.astral.sh/uv/)** | installs this tool; it downloads Python 3.14 itself if you lack it | |
+| **bubblewrap** (`bwrap`) with unprivileged user namespaces allowed | the sandbox; some distros restrict namespaces and need extra setup | `vibe-mcp doctor` |
+| **Mistral Vibe**, installed with `uv tool install mistral-vibe` | the reference sandbox binds `~/.local/bin`, `~/.local/share/uv` and `~/.vibe`, so a Vibe installed another way (pipx, pip) is invisible inside it | `vibe --version` |
+| **A Mistral login**: the system keyring (`vibe --setup`) or `MISTRAL_API_KEY` | Vibe calls the Mistral API | `vibe-mcp doctor` |
+| for the keyring login: **`xdg-dbus-proxy`** and a running **Secret Service** (gnome-keyring, KeePassXC, KWallet) | the sandbox reaches the keyring through a filtered D-Bus proxy; `DBUS_SESSION_BUS_ADDRESS` must reach the server (often missing over SSH or in tmux; use the API key there) | `vibe-mcp doctor` |
+| **`python3`** on the PATH | the reference sandbox uses it to read Vibe's export | |
+
+Only Vibe 3.1.x has been tested. On the common distros the packages are called `bubblewrap` and
+`xdg-dbus-proxy`.
 
 ## Install
 
 ```sh
+# 1. Vibe, then log in (skip the login if you will use MISTRAL_API_KEY instead)
+uv tool install mistral-vibe        # see Mistral's docs if the package name changes
+vibe --setup
+
+# 2. this project, and the reference sandbox from the same clone
 git clone https://github.com/idaho06/vibe-mcp && cd vibe-mcp
+install -m755 contrib/vibe-sandbox ~/.local/bin/
 uv tool install .
+
+# 3. check the machine; every failing line says how to fix it
+vibe-mcp doctor
+
+# 4. register the server with Claude Code for all your projects
 claude mcp add --scope user vibe -- vibe-mcp
+claude mcp list                     # should show `vibe` as connected
 ```
 
-The server works on the git repository of the directory it is started in, so start Claude Code
-inside the repository you want to work on. At startup it prints `serving git repo <path>` on
-stderr; check it. Do not wrap the command in something that changes directory (for example
-`uv run --directory`; use `uv run --project` instead), or it will serve the wrong repository.
+To update later: `git pull && uv tool install --force .`
+
+If you use `MISTRAL_API_KEY`, the server process must receive it. Pass it when registering (see
+`claude mcp add --help` for the environment-variable option) instead of relying on your shell.
+
+### Using it
+
+Start Claude Code **inside the repository you want to work on** (it needs at least one commit). The
+server works on the git repository of its working directory and prints `serving git repo <path>` on
+stderr at startup; check that line. Do not wrap the command in something that changes directory (for
+example `uv run --directory`; use `uv run --project` instead), or it will serve the wrong repository.
+
+Claude Code asks before using MCP tools. Allow the five tools (named like `mcp__vibe__vibe_submit`)
+in its permission settings if you do not want a prompt for each call.
+
+### Using a different sandbox
+
+`sandbox_cmd` in the config can point to any wrapper that behaves like this. The `doctor` checks that
+are specific to the reference sandbox are skipped for other commands.
+
+- It is called as `vibe-sandbox RUN_DIR [vibe arguments...]` with the current directory inside a git repo.
+- `RUN_DIR` is named `vibe-run.*`, and the wrapper makes Vibe write `RUN_DIR/export/export.json`
+  (Vibe's `--output-dir RUN_DIR/export`).
+- It exits with Vibe's exit code (0 finished, 3 stopped at a limit, anything else failed).
+- It should let Vibe write only the current directory (the job's worktree) and the git directory.
+- Keep `data_dir` short: the wrapper may create a Unix socket in `RUN_DIR` (108-character limit).
+
+Read `contrib/vibe-sandbox` before you rely on it: it decides what Vibe can see and write.
 
 ## Tools
 
