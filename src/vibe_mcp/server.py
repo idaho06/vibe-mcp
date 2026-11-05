@@ -7,8 +7,10 @@ import functools
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver import Context
 from mcp.server.mcpserver.exceptions import ToolError
 
 from vibe_mcp import config as config_module
@@ -30,6 +32,23 @@ def _tool_errors[**P](fn: Callable[P, Awaitable[str]]) -> Callable[P, Awaitable[
     return wrapper
 
 
+class _StrictServer(MCPServer):
+    """An MCPServer that rejects arguments a tool does not declare.
+
+    The SDK silently drops them, so a misnamed `skill` or `discard` would quietly change what a call
+    does: the job would run without its skill, or a job meant to be discarded would be applied.
+    """
+
+    async def call_tool(self, name: str, arguments: dict[str, Any], context: Context | None = None):
+        tool = next((t for t in await self.list_tools() if t.name == name), None)
+        if tool is not None:
+            valid = set(tool.input_schema.get("properties", {}))
+            if unknown := sorted(set(arguments) - valid):
+                got, allowed = ", ".join(unknown), ", ".join(sorted(valid))
+                raise ToolError(f"{name}: unknown argument(s) {got}; valid: {allowed}")
+        return await super().call_tool(name, arguments, context)
+
+
 def build_server(cfg: Config | None = None, cwd: Path | None = None) -> MCPServer:
     """Build the server. The repo is the git toplevel of `cwd` (default: the process cwd)."""
     holder: dict[str, Manager] = {}
@@ -43,7 +62,7 @@ def build_server(cfg: Config | None = None, cwd: Path | None = None) -> MCPServe
         finally:
             await manager.shutdown()
 
-    mcp = MCPServer("vibe", lifespan=lifespan)
+    mcp = _StrictServer("vibe", lifespan=lifespan)
 
     @mcp.tool(structured_output=False)
     @_tool_errors
