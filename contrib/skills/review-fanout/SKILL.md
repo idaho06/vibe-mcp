@@ -38,8 +38,8 @@ the code and report only what holds up. You are read-only, and nobody can answer
 ## Final report
 
 Write nothing before or after the list. Under 20 lines, one line per finding, most serious first, each
-line at most 200 characters: the server cuts your final message at 2000 characters, and a cut report
-loses the lowest-ranked findings.
+line at most 200 characters: the server shows only the first 3000 characters of your final message, so
+the lowest-ranked findings are the ones left out.
 
 `file:line - [HIGH|MEDIUM|LOW] the defect. Trigger: <input or state>. Effect: <what breaks>. (CONFIRMED|PLAUSIBLE)`
 

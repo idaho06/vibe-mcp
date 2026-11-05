@@ -30,7 +30,7 @@ class Config:
     max_turns: int = 200
     time_limit: int = 1200
     max_price: float = 0
-    max_message_chars: int = 2000
+    max_message_chars: int = 3000
     max_diff_bytes: int = 20000
     context_files: tuple[str, ...] = ()  # repo files whose text is put in front of every task
 

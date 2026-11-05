@@ -272,7 +272,7 @@ wrong types are rejected at startup.
 | `max_turns` | `200` | default per-job turn budget (per-call override) |
 | `time_limit` | `1200` | default per-job time limit in seconds (per-call override) |
 | `max_price` | `0` | default per-job price cap in dollars; 0 = no cap |
-| `max_message_chars` | `2000` | cap on Vibe's final message in results |
+| `max_message_chars` | `3000` | cap on Vibe's final message in results |
 | `max_diff_bytes` | `20000` | cap on the diff in results |
 | `context_files` | `[]` | repo files whose text is put in front of every task (see [Skills](#skills-and-project-context)) |
 

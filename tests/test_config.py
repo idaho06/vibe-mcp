@@ -18,6 +18,7 @@ def test_missing_file_gives_defaults(tmp_path: Path) -> None:
     assert (cfg.max_concurrent, cfg.max_turns, cfg.time_limit, cfg.max_price) == (3, 200, 1200, 0)
     assert cfg.model == "mistral-large-4"
     assert cfg.sandbox_cmd == "vibe-sandbox"
+    assert cfg.max_message_chars == 3000  # fits a fan-out review of about eight findings
 
 
 def test_overrides_and_tilde_expansion(tmp_path: Path) -> None:
