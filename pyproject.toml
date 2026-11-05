@@ -1,6 +1,6 @@
 [project]
 name = "vibe-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server that delegates coding tasks to Mistral Vibe in sandboxed git worktrees"
 readme = "README.md"
 license = "MIT"
