@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from vibe_mcp.skills import load
+from vibe_mcp.skills import fanout, load
 
 SHIPPED = Path(__file__).parent.parent / "contrib" / "skills"
 NAMES = sorted(p.name for p in SHIPPED.glob("*/") if (p / "SKILL.md").is_file())
@@ -23,7 +23,7 @@ def frontmatter(path: Path) -> dict:
 
 
 def test_the_expected_skills_are_shipped() -> None:
-    assert NAMES == ["code-review", "simplify"]
+    assert NAMES == ["code-review", "review-fanout", "simplify", "simplify-fanout"]
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -81,3 +81,28 @@ def test_the_adaptation_loads_through_the_mcp_without_its_notice(tmp_path: Path)
     assert (
         "ES modules" not in body and "React" not in body
     )  # the JavaScript-specific rules are gone
+
+
+@pytest.mark.parametrize(
+    "name, angles, readonly",
+    [
+        ("simplify-fanout", ["dead-weight", "duplication", "structure", "wasted-work"], False),
+        ("review-fanout", ["callers", "edges", "logic", "security", "state-and-timing"], True),
+    ],
+)
+def test_the_fanout_packs_declare_their_reviewers(
+    name: str, angles: list[str], readonly: bool, tmp_path: Path
+) -> None:
+    shutil.copytree(SHIPPED / name, tmp_path / ".vibe" / "skills" / name)
+    found = fanout(name, tmp_path, home=tmp_path / "nohome")
+    assert found is not None
+    assert sorted(found.angles) == angles and found.readonly is readonly
+    assert all(len(text) > 300 for text in found.angles.values())
+    merge = load(name, tmp_path, home=tmp_path / "nohome")
+    assert "Findings from independent reviewers" in merge  # the merge job's input section
+
+
+@pytest.mark.parametrize("name", ["simplify", "code-review"])
+def test_the_single_agent_skills_are_not_fanout_skills(name: str, tmp_path: Path) -> None:
+    shutil.copytree(SHIPPED / name, tmp_path / ".vibe" / "skills" / name)
+    assert fanout(name, tmp_path, home=tmp_path / "nohome") is None

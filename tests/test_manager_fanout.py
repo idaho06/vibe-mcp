@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import pytest
@@ -215,3 +216,33 @@ def make_manager_for(make_manager, repo: Path):
 
     mgr = make_manager()
     return Manager(mgr.cfg, repo)
+
+
+SHIPPED = Path(__file__).parent.parent / "contrib" / "skills"
+
+
+@pytest.mark.parametrize(
+    "name, reviewers, readonly",
+    [("simplify-fanout", 4, False), ("review-fanout", 5, True)],
+)
+async def test_the_shipped_packs_run_as_fanouts(
+    make_manager, repo: Path, name: str, reviewers: int, readonly: bool
+) -> None:
+    shutil.copytree(SHIPPED / name, repo / ".vibe" / "skills" / name)
+    mgr = make_manager(max_concurrent=6)
+    task = spec(merge={"message": "merged"})
+
+    merge = mgr.submit(task, skill=name, title="try the pack")
+    team = reviewers_of(mgr, merge)
+    assert len(team) == reviewers and merge.readonly is readonly
+    await finish(mgr, merge)
+
+    assert merge.state == "finished"
+    for r in team:
+        prompt = (r.run_dir / "task.md").read_text()
+        assert prompt.startswith("## Reviewer role") and f"## Your angle: {r.angle}" in prompt
+        assert "do not carry it out" in prompt and prompt.endswith(task)
+        assert "Findings from independent reviewers" not in prompt  # never the merge instructions
+    prompt = (merge.run_dir / "task.md").read_text()
+    assert prompt.startswith(f"## Skill: {name}")
+    assert all(f"### {r.angle} (job" in prompt for r in team)
