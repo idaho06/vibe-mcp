@@ -94,3 +94,15 @@ def test_load_all_sorts_by_creation_and_skips_junk(tmp_path: Path) -> None:
 
 def test_load_all_without_runs_dir(tmp_path: Path) -> None:
     assert load_all(tmp_path) == []
+
+
+def test_prompt_is_the_spec_with_the_skill_preamble_in_front(tmp_path: Path) -> None:
+    plain = make(tmp_path)
+    assert plain.skill is None and plain.preamble == "" and plain.prompt == "do it"
+    skilled = make(
+        tmp_path, skill="simplify", preamble="## Skill: simplify\n\nSteps.\n\n## Task\n\n"
+    )
+    assert skilled.prompt == "## Skill: simplify\n\nSteps.\n\n## Task\n\ndo it"
+    skilled.save()
+    loaded = load(skilled.run_dir)
+    assert (loaded.skill, loaded.preamble) == (skilled.skill, skilled.preamble)

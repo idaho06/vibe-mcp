@@ -39,6 +39,8 @@ class Job:
     spec: str
     repo: Path | None = None  # the git repo the job belongs to (data_dir is shared by all repos)
     title: str = ""
+    skill: str | None = None  # name of the skill whose text is in `preamble`
+    preamble: str = ""  # goes in front of `spec` in the prompt
     scope: Scope = ()
     base_job: str | None = None
     base_ref: str | None = None  # resolved when the job starts
@@ -68,6 +70,11 @@ class Job:
     @property
     def branch(self) -> str:
         return f"vibe/{self.id}"
+
+    @property
+    def prompt(self) -> str:
+        """What Vibe is given: the skill (if any), then the task."""
+        return self.preamble + self.spec
 
     @property
     def active(self) -> bool:

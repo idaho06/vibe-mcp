@@ -139,3 +139,18 @@ async def test_the_server_refuses_to_start_outside_a_git_repo(cfg: Config, tmp_p
     with pytest.raises(BaseException, match="not inside a git repository"):  # noqa: PT011
         async with Client(build_server(cfg, elsewhere)):
             pass
+
+
+async def test_submit_with_a_skill_and_the_error_for_a_wrong_name(
+    client: Client, repo: Path, cfg: Config
+) -> None:
+    skill = repo / ".vibe" / "skills" / "simplify"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("---\nname: simplify\n---\nSimplify carefully.")
+
+    job_id = await submit_and_finish(client, {"write": {"s.txt": "x"}}, skill="simplify")
+    prompt = (cfg.data_dir / "runs" / f"vibe-run.{job_id}" / "task.md").read_text()
+    assert "Simplify carefully." in prompt
+
+    error = await call_error(client, "vibe_submit", spec="x", skill="simplyfy")
+    assert "unknown skill 'simplyfy'" in error and "available: simplify" in error

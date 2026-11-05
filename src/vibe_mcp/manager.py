@@ -7,7 +7,7 @@ import time
 from collections.abc import Iterable
 from pathlib import Path
 
-from vibe_mcp import gitops, runner
+from vibe_mcp import gitops, runner, skills
 from vibe_mcp.config import Config
 from vibe_mcp.gitops import GitError
 from vibe_mcp.jobs import CLOSED, USABLE_BASE, Details, Job, load_all, new_id, run_dir_for
@@ -67,10 +67,15 @@ class Manager:
         max_turns: int | None = None,
         time_limit: int | None = None,
         max_price: float | None = None,
+        skill: str | None = None,
     ) -> Job:
         """Queue a job and start it right away if a slot is free."""
         if not spec.strip():
             raise ManagerError("spec is empty")
+        try:
+            preamble = skills.preamble(skill, self.repo) if skill else ""
+        except skills.SkillError as exc:
+            raise ManagerError(str(exc)) from exc
         try:
             job_scope = normalize(scope)
         except ValueError as exc:
@@ -94,6 +99,8 @@ class Manager:
             repo=self.repo,
             spec=spec,
             title=title.strip(),
+            skill=skill or None,
+            preamble=preamble,
             scope=job_scope,
             base_job=base_job,
             max_turns=max_turns,

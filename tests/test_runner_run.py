@@ -113,3 +113,17 @@ async def test_cancel_escalates_to_sigkill_when_sigterm_is_ignored(
 
     assert not alive(child)
     assert not alive(job.pid)
+
+
+async def test_task_file_holds_the_skill_preamble_before_the_spec(cfg: Config, new_job) -> None:
+    job = new_job(
+        {"write": {"s.txt": "x"}},
+        skill="simplify",
+        preamble="## Skill: simplify\n\nSteps.\n\n## Task\n\n",
+    )
+    assert await runner.run(job, cfg) == 0
+    task = (job.run_dir / "task.md").read_text()
+    assert task.startswith("## Skill: simplify\n\nSteps.") and task.endswith(job.spec)
+    assert (
+        job.worktree / "s.txt"
+    ).exists()  # the fake still found the directive after the preamble

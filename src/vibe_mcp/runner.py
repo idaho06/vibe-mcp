@@ -127,7 +127,7 @@ def exit_error(run_dir: Path, code: int) -> str:
 def _open_logs(job: Job):
     """Create the run dir, write task.md, and open the stdout/stderr logs."""
     job.run_dir.mkdir(parents=True, exist_ok=True)
-    (job.run_dir / "task.md").write_text(job.spec)
+    (job.run_dir / "task.md").write_text(job.prompt)
     return (job.run_dir / "stdout.jsonl").open("wb"), (job.run_dir / "stderr.txt").open("wb")
 
 

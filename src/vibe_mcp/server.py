@@ -55,16 +55,18 @@ def build_server(cfg: Config | None = None, cwd: Path | None = None) -> MCPServe
         max_turns: int | None = None,
         time_limit: int | None = None,
         max_price: float | None = None,
+        skill: str | None = None,
     ) -> str:
         """Queue a coding task for Mistral Vibe (a cheaper model) in an isolated git worktree.
 
         spec: complete and self-contained; Vibe sees neither this chat nor project docs.
+        skill: name of a Vibe skill (.vibe/skills/<name>/SKILL.md in the repo or ~) to follow.
         scope: repo-relative paths the task may touch; jobs with overlapping scopes run one
         after another (omit = whole repo). base_job: build on another job's result.
         Returns at once. Then: vibe_wait, vibe_result, vibe_apply.
         """
         job = holder["manager"].submit(
-            spec, title, scope, base_job, max_turns, time_limit, max_price
+            spec, title, scope, base_job, max_turns, time_limit, max_price, skill
         )
         return status_line(job)
 

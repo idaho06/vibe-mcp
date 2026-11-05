@@ -48,7 +48,8 @@ def main(argv: list[str]) -> int:
     (run / "argv.json").write_text(json.dumps({"cwd": os.getcwd(), "args": args, "opts": opts}))
 
     try:
-        directive = json.loads(Path(opts["--prompt-file"]).read_text())
+        text = Path(opts["--prompt-file"]).read_text()
+        directive = json.loads(text.rsplit("## Task\n\n", 1)[-1])  # after a skill preamble, if any
     except ValueError:
         directive = {}
     if not isinstance(directive, dict):
