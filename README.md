@@ -40,7 +40,9 @@ claude mcp add --scope user vibe -- vibe-mcp
 ```
 
 The server works on the git repository of the directory it is started in, so start Claude Code
-inside the repository you want to work on.
+inside the repository you want to work on. At startup it prints `serving git repo <path>` on
+stderr; check it. Do not wrap the command in something that changes directory (for example
+`uv run --directory`; use `uv run --project` instead), or it will serve the wrong repository.
 
 ## Tools
 

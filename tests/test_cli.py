@@ -92,7 +92,10 @@ def test_serve_is_the_default_command(
     monkeypatch.chdir(repo)
     assert cli.main(argv) == 0
     assert server.ran
-    assert capsys.readouterr().out == ""  # stdout belongs to the MCP protocol
+    captured = capsys.readouterr()
+    assert captured.out == ""  # stdout belongs to the MCP protocol
+    # say which repo is served: a wrapper that changes directory would silently pick another one
+    assert f"serving git repo {repo}" in captured.err
 
 
 def test_serve_outside_a_repo_exits_with_a_clear_message(

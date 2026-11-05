@@ -59,6 +59,9 @@ def _serve() -> int:
     cfg = config.load()
     repo = asyncio.run(find_repo(Path.cwd()))  # fail early, with a plain message
     logging.basicConfig(stream=sys.stderr, level=logging.INFO)  # stdout is the MCP channel
+    print(
+        f"vibe-mcp: serving git repo {repo} (data in {cfg.data_dir})", file=sys.stderr, flush=True
+    )
     build_server(cfg, repo).run()
     return 0
 
