@@ -21,6 +21,9 @@ _GUARD_WARNING = (
 )
 
 
+_READONLY_WARNING = "read-only job changed files; the changes were discarded"
+
+
 class ManagerError(Exception):
     """A request the manager cannot honour (unknown job, bad argument, wrong state)."""
 
@@ -110,8 +113,12 @@ class Manager:
             time_limit=time_limit,
             max_price=max_price,
         )
+        return self.enqueue(job)
+
+    def enqueue(self, job: Job) -> Job:
+        """Register a prepared job and start it as soon as the scheduler allows."""
         job.save()
-        self.jobs[job_id] = job
+        self.jobs[job.id] = job
         self._schedule()
         self._notify()
         return job
@@ -175,6 +182,8 @@ class Manager:
         Returns the conflicting paths instead if the changes do not merge; nothing is changed then.
         """
         job = self.get(job_id)
+        if job.readonly:
+            raise ManagerError(f"job {job.id} is read-only: there is nothing to apply")
         async with self._git_lock:  # checked inside: a racing apply/discard may have closed it
             self._check_closable(job)
             if job.state not in USABLE_BASE:
@@ -259,6 +268,8 @@ class Manager:
 
     def _base_of(self, job: Job) -> tuple[str, str]:
         """("ok", git ref) | ("wait", "") | ("fail", error message)."""
+        if job.base_ref is not None:  # pinned when queued, e.g. all members of a fan-out
+            return "ok", job.base_ref
         if job.base_job is None:
             return "ok", self._default_base()
         base = self.get(job.base_job)
@@ -279,7 +290,7 @@ class Manager:
             return
         running = [j for j in self.jobs.values() if j.state == "running"]
         slots = self.cfg.concurrency - len(running)
-        reserved = [j.scope for j in running]
+        reserved = [j.scope for j in running if not j.readonly]
         for job in list(self.jobs.values()):
             if job.state != "queued":
                 continue
@@ -288,8 +299,9 @@ class Manager:
                 self._end(job, "failed", detail)
                 continue
             blocked = verdict == "wait" or slots <= 0
-            blocked = blocked or any(overlaps(job.scope, other) for other in reserved)
-            reserved.append(job.scope)
+            if not job.readonly:
+                blocked = blocked or any(overlaps(job.scope, other) for other in reserved)
+                reserved.append(job.scope)
             if not blocked:
                 slots -= 1
                 self._start(job, detail)
@@ -313,7 +325,9 @@ class Manager:
         try:
             worktree = self._worktree_path(job)
             base_sha = await gitops.head(self.repo, job.base_ref)
-            await gitops.add_worktree(self.repo, worktree, job.branch, base_sha)
+            await gitops.add_worktree(
+                self.repo, worktree, None if job.readonly else job.branch, base_sha
+            )
             job.base_ref, job.worktree = base_sha, worktree
             before = await self._main_state()
 
@@ -323,10 +337,18 @@ class Manager:
             job.state = runner.final_state(code)
             if job.state == "failed" and not job.error:
                 job.error = runner.exit_error(job.run_dir, code)
-            label = job.title or job.spec.strip().splitlines()[0][:72]
-            job.commit = await gitops.commit_all(worktree, f"vibe {job.id}: {label}")
+            warnings = []
+            if job.readonly:
+                if not await gitops.is_clean(worktree, untracked=True):
+                    warnings.append(_READONLY_WARNING)
+                await gitops.remove_worktree(self.repo, worktree, None)
+                job.worktree = None
+            else:
+                label = job.title or job.spec.strip().splitlines()[0][:72]
+                job.commit = await gitops.commit_all(worktree, f"vibe {job.id}: {label}")
             if await self._main_state() != before:
-                job.warning = _GUARD_WARNING
+                warnings.append(_GUARD_WARNING)
+            job.warning = "; ".join(warnings) or None
         except Exception as exc:
             log.exception("job %s failed", job.id)
             job.state = "failed"
