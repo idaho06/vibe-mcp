@@ -35,6 +35,7 @@ class Job:
     id: str
     run_dir: Path
     spec: str
+    repo: Path | None = None  # the git repo the job belongs to (data_dir is shared by all repos)
     title: str = ""
     scope: Scope = ()
     base_job: str | None = None
@@ -75,6 +76,7 @@ class Job:
         data = asdict(self)
         data["scope"] = list(self.scope)
         data["run_dir"] = str(self.run_dir)
+        data["repo"] = str(self.repo) if self.repo else None
         data["worktree"] = str(self.worktree) if self.worktree else None
         self.run_dir.mkdir(parents=True, exist_ok=True)
         tmp = self.run_dir / "job.json.tmp"
@@ -88,8 +90,9 @@ def load(run_dir: Path) -> Job:
     data = {k: v for k, v in data.items() if k in known}
     data["scope"] = tuple(data.get("scope") or ())
     data["run_dir"] = Path(data["run_dir"])
-    if data.get("worktree"):
-        data["worktree"] = Path(data["worktree"])
+    for key in ("repo", "worktree"):
+        if data.get(key):
+            data[key] = Path(data[key])
     return Job(**data)
 
 

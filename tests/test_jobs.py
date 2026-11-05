@@ -39,6 +39,7 @@ def test_save_and_load_round_trip(tmp_path: Path) -> None:
         title="t",
         scope=("src", "README.md"),
         base_job="ffffff",
+        repo=tmp_path / "repo",
         worktree=tmp_path / "wt",
         max_price=0.5,
         cost_usd=0.013,
@@ -49,6 +50,7 @@ def test_save_and_load_round_trip(tmp_path: Path) -> None:
     assert loaded == job
     assert isinstance(loaded.scope, tuple)
     assert isinstance(loaded.worktree, Path)
+    assert isinstance(loaded.repo, Path)
     assert isinstance(loaded.run_dir, Path)
 
 
@@ -69,6 +71,12 @@ def test_load_tolerates_unknown_and_missing_keys(tmp_path: Path) -> None:
     del data["title"]
     (job.run_dir / "job.json").write_text(json.dumps(data))
     assert load(job.run_dir).title == ""
+
+
+def test_repo_defaults_to_none(tmp_path: Path) -> None:
+    job = make(tmp_path)
+    job.save()
+    assert load(job.run_dir).repo is None
 
 
 def test_load_all_sorts_by_creation_and_skips_junk(tmp_path: Path) -> None:
