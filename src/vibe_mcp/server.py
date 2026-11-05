@@ -111,8 +111,9 @@ def build_server(cfg: Config | None = None, cwd: Path | None = None) -> MCPServe
         if discard:
             await manager.discard(job_id)
             return status_line(job)
-        stat = (await manager.details(job_id)).stat
         conflicts = await manager.apply(job_id)
-        return conflict_text(job, conflicts) if conflicts else apply_text(job, stat)
+        if conflicts:
+            return conflict_text(job, conflicts)
+        return apply_text(job, (await manager.details(job_id)).stat)  # commit outlives the branch
 
     return mcp

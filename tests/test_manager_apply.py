@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -149,3 +150,19 @@ async def test_apply_and_discard_wait_for_dependent_jobs(make_manager) -> None:
     await mgr.discard(base.id)
     assert base.state == "discarded"
     await mgr.cancel(filler.id)
+
+
+@pytest.mark.parametrize("second", ["apply", "discard"])
+async def test_racing_calls_on_one_job_cannot_both_win(make_manager, repo: Path, second) -> None:
+    mgr = make_manager()
+    job = mgr.submit(spec(write={"new.py": "x\n"}))
+    await finish(mgr, job)
+
+    first_result, second_result = await asyncio.gather(
+        mgr.apply(job.id), getattr(mgr, second)(job.id), return_exceptions=True
+    )
+
+    assert first_result == []
+    assert isinstance(second_result, ManagerError)
+    assert "already applied" in str(second_result)  # not a leaked git error or "uncommitted"
+    assert job.state == "applied"

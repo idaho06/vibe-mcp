@@ -165,13 +165,13 @@ class Manager:
         Returns the conflicting paths instead if the changes do not merge; nothing is changed then.
         """
         job = self.get(job_id)
-        self._check_closable(job)
-        if job.state not in USABLE_BASE:
-            raise ManagerError(
-                f"job {job.id} is {job.state}; only finished or limit jobs can be applied "
-                "(discard it instead)"
-            )
-        async with self._git_lock:
+        async with self._git_lock:  # checked inside: a racing apply/discard may have closed it
+            self._check_closable(job)
+            if job.state not in USABLE_BASE:
+                raise ManagerError(
+                    f"job {job.id} is {job.state}; only finished or limit jobs can be applied "
+                    "(discard it instead)"
+                )
             if not await gitops.is_clean(self.repo):
                 raise ManagerError(
                     "main checkout has uncommitted changes to tracked files; "
@@ -189,8 +189,8 @@ class Manager:
     async def discard(self, job_id: str) -> None:
         """Throw the job's worktree and branch away."""
         job = self.get(job_id)
-        self._check_closable(job)
         async with self._git_lock:
+            self._check_closable(job)
             await self._close(job, "discarded")
 
     async def shutdown(self) -> None:
