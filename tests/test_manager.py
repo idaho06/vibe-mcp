@@ -1,42 +1,16 @@
 import asyncio
-import json
 import time
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from vibe_mcp import jobs
-from vibe_mcp.config import Config
 from vibe_mcp.jobs import Job, run_dir_for
 from vibe_mcp.manager import Manager, ManagerError, find_repo
 
-from .conftest import alive, sh, wait_for_file
+from .conftest import alive, finish, sh, spec, wait_for_file
 
 pytestmark = pytest.mark.anyio
-
-
-def spec(**directive: object) -> str:
-    return json.dumps(directive)
-
-
-@pytest.fixture
-async def make_manager(cfg: Config, repo: Path):
-    managers: list[Manager] = []
-
-    def factory(**overrides: object) -> Manager:
-        manager = Manager(replace(cfg, **overrides), repo)
-        managers.append(manager)
-        return manager
-
-    yield factory
-    for manager in managers:
-        await manager.shutdown()
-
-
-async def finish(mgr: Manager, *js: Job, timeout: float = 20) -> None:
-    await mgr.wait([j.id for j in js], timeout=timeout, all_=True)
-    assert not any(j.active for j in js), "jobs did not finish in time"
 
 
 async def test_job_runs_to_completion_in_its_own_worktree(make_manager, cfg, repo) -> None:

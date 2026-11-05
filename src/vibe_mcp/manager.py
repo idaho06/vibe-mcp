@@ -165,10 +165,18 @@ class Manager:
         self._changed.set()
         self._changed = asyncio.Event()
 
+    def _default_base(self) -> str:
+        """HEAD, or in serial mode the branch of the latest usable job, so that work accumulates."""
+        if self.cfg.isolation == "serial":
+            usable = [j for j in self.jobs.values() if j.state in USABLE_BASE]
+            if usable:
+                return max(usable, key=lambda j: j.ended_at or 0).branch
+        return "HEAD"
+
     def _base_of(self, job: Job) -> tuple[str, str]:
         """("ok", git ref) | ("wait", "") | ("fail", error message)."""
         if job.base_job is None:
-            return "ok", "HEAD"
+            return "ok", self._default_base()
         base = self.get(job.base_job)
         if base.active:
             return "wait", ""

@@ -3,12 +3,14 @@ import json
 import shlex
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from vibe_mcp.config import Config
 from vibe_mcp.jobs import Job, run_dir_for
+from vibe_mcp.manager import Manager
 
 
 @pytest.fixture
@@ -74,3 +76,26 @@ async def wait_for_file(path: Path, timeout: float = 5) -> None:
     async with asyncio.timeout(timeout):
         while not path.exists():
             await asyncio.sleep(0.02)
+
+
+def spec(**directive: object) -> str:
+    return json.dumps(directive)
+
+
+@pytest.fixture
+async def make_manager(cfg: Config, repo: Path):
+    managers: list[Manager] = []
+
+    def factory(**overrides: object) -> Manager:
+        manager = Manager(replace(cfg, **overrides), repo)
+        managers.append(manager)
+        return manager
+
+    yield factory
+    for manager in managers:
+        await manager.shutdown()
+
+
+async def finish(mgr: Manager, *js: Job, timeout: float = 20) -> None:
+    await mgr.wait([j.id for j in js], timeout=timeout, all_=True)
+    assert not any(j.active for j in js), "jobs did not finish in time"
