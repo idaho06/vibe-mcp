@@ -13,8 +13,10 @@ reviews while a cheaper one writes the code.
 > **Status:** unit-tested against a fake sandbox (no network, no cost), and smoke-tested against
 > real Vibe 3.1.0 with the reference sandbox by a script driving the server over stdio: parallel
 > jobs, apply, conflict report, cancel (no processes left behind), writes outside the worktree,
-> and serial chaining. It has not been tried inside a live Claude Code session yet, so how Claude
-> Code sets the server's working directory and how long it lets `vibe_wait` block are unverified.
+> and serial chaining. It has also been used from a live Claude Code session on Linux: the server
+> served the repo Claude Code was started in, the keyring login reached the jobs, and a cleanup, a
+> review, `vibe_apply` and a four-minute job all worked. Only Vibe 3.1.x and `mistral-large-4` have
+> been tried.
 
 ## Requirements
 
@@ -197,6 +199,9 @@ wrong types are rejected at startup.
 
 ## Things to know
 
+- **Long waits are fine in Claude Code.** It moves a tool call that runs longer than about 120 seconds
+  to the background and tells Claude when it finishes. A `vibe_wait` on a four-minute job returned its
+  result that way, as a notification, without an error. (Seen in one session; other clients may differ.)
 - **Vibe's code is unreviewed.** The server never runs tests or the code Vibe wrote. Read the diff
   (`vibe_result diff=true`), then run your own checks before committing.
 - **Trust the diff, not Vibe's report.** Vibe can say it wrote files outside its worktree, such as
