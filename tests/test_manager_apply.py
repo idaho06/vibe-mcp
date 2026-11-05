@@ -143,7 +143,7 @@ async def test_apply_and_discard_wait_for_dependent_jobs(make_manager) -> None:
     assert dependent.state == "queued"
 
     for action in (mgr.apply, mgr.discard):
-        with pytest.raises(ManagerError, match=f"{dependent.id}.*base job {base.id}"):
+        with pytest.raises(ManagerError, match=f"{dependent.id}.*job {base.id}"):
             await action(base.id)
 
     await mgr.cancel(dependent.id)

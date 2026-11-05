@@ -117,6 +117,8 @@ class Manager:
 
     def enqueue(self, job: Job) -> Job:
         """Register a prepared job and start it as soon as the scheduler allows."""
+        for dependency in job.depends_on:
+            self.get(dependency)  # raises for an unknown id, before anything is registered
         job.save()
         self.jobs[job.id] = job
         self._schedule()
@@ -134,7 +136,11 @@ class Manager:
         Default targets: the jobs active right now. Returns the targets, whatever their state.
         """
         ids = list(job_ids or ())
-        targets = [self.get(i) for i in ids] if ids else [j for j in self.jobs.values() if j.active]
+        targets = (
+            [self.get(i) for i in ids]
+            if ids
+            else [j for j in self.jobs.values() if j.active and not j.hidden]
+        )
 
         def done() -> bool:
             ended = [not j.active for j in targets]
@@ -174,6 +180,9 @@ class Manager:
             await asyncio.gather(task, return_exceptions=True)
         else:
             raise ManagerError(f"job {job.id} is already {job.state}")
+        # the parent first: cancelled reviewers must not let it start and then fail
+        for child in [j for j in self.jobs.values() if j.parent == job.id and j.active]:
+            await self.cancel(child.id)
         return job
 
     async def apply(self, job_id: str) -> list[str]:
@@ -231,10 +240,14 @@ class Manager:
             raise ManagerError(f"job {job.id} was already {job.state}")
         if job.active:
             raise ManagerError(f"job {job.id} is {job.state}; wait for it or cancel it first")
-        waiting = [j.id for j in self.jobs.values() if j.active and j.base_job == job.id]
+        waiting = [
+            j.id
+            for j in self.jobs.values()
+            if j.active and (j.base_job == job.id or job.id in j.depends_on)
+        ]
         if waiting:
             raise ManagerError(
-                f"job(s) {', '.join(waiting)} still waiting on base job {job.id}; cancel them first"
+                f"job(s) {', '.join(waiting)} still waiting on job {job.id}; cancel them first"
             )
 
     async def _close(self, job: Job, state: str) -> None:
@@ -268,6 +281,12 @@ class Manager:
 
     def _base_of(self, job: Job) -> tuple[str, str]:
         """("ok", git ref) | ("wait", "") | ("fail", error message)."""
+        dependencies = [self.get(d) for d in job.depends_on]
+        if any(d.active for d in dependencies):
+            return "wait", ""
+        if dependencies and not any(d.state in USABLE_BASE for d in dependencies):
+            states = ", ".join(f"{d.id} {d.state}" for d in dependencies)
+            return "fail", f"none of the jobs it depends on finished ({states})"
         if job.base_ref is not None:  # pinned when queued, e.g. all members of a fan-out
             return "ok", job.base_ref
         if job.base_job is None:
