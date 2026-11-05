@@ -73,14 +73,9 @@ class Job:
 
     def save(self) -> None:
         """Write job.json atomically."""
-        data = asdict(self)
-        data["scope"] = list(self.scope)
-        data["run_dir"] = str(self.run_dir)
-        data["repo"] = str(self.repo) if self.repo else None
-        data["worktree"] = str(self.worktree) if self.worktree else None
         self.run_dir.mkdir(parents=True, exist_ok=True)
         tmp = self.run_dir / "job.json.tmp"
-        tmp.write_text(json.dumps(data, indent=1))
+        tmp.write_text(json.dumps(asdict(self), indent=1, default=str))  # Paths -> str
         os.replace(tmp, self.run_dir / "job.json")
 
 

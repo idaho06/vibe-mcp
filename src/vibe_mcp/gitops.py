@@ -31,8 +31,9 @@ async def git(*args: str, cwd: Path) -> str:
     return stdout
 
 
-def _names(output: str) -> list[str]:
-    """Split NUL-separated (-z) output."""
+async def _diff_names(*args: str, cwd: Path) -> list[str]:
+    """Paths printed by `git diff --name-only -z *args` (NUL-separated, so any name is safe)."""
+    output = await git("diff", "--name-only", "-z", *args, cwd=cwd)
     return [name for name in output.split("\0") if name]
 
 
@@ -64,7 +65,7 @@ async def add_worktree(repo: Path, path: Path, branch: str, base: str) -> None:
 async def commit_all(worktree: Path, message: str) -> str | None:
     """Commit everything (new, modified, deleted; .gitignore respected). None if nothing changed."""
     await git("add", "-A", cwd=worktree)
-    if not await git("status", "--porcelain", cwd=worktree):
+    if await is_clean(worktree, untracked=True):
         return None
     await git(
         *_IDENTITY,
@@ -90,15 +91,11 @@ async def diff(repo: Path, base: str, tip: str) -> str:
 
 async def changed_files(repo: Path, base: str, tip: str) -> list[str]:
     """Every path touched between the commits; a rename lists both its old and new path."""
-    return _names(await git("diff", "--name-only", "--no-renames", "-z", base, tip, cwd=repo))
+    return await _diff_names("--no-renames", base, tip, cwd=repo)
 
 
 async def added_files(repo: Path, base: str, tip: str) -> list[str]:
-    return _names(
-        await git(
-            "diff", "--name-only", "--no-renames", "--diff-filter=A", "-z", base, tip, cwd=repo
-        )
-    )
+    return await _diff_names("--no-renames", "--diff-filter=A", base, tip, cwd=repo)
 
 
 async def merge_squash(repo: Path, branch: str) -> list[str]:
@@ -110,7 +107,7 @@ async def merge_squash(repo: Path, branch: str) -> list[str]:
     try:
         await git("merge", "--squash", branch, cwd=repo)
     except GitError:
-        conflicts = _names(await git("diff", "--name-only", "--diff-filter=U", "-z", cwd=repo))
+        conflicts = await _diff_names("--diff-filter=U", cwd=repo)
         if not conflicts:
             raise
         await git("reset", "--merge", cwd=repo)

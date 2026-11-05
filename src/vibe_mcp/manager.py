@@ -1,6 +1,7 @@
 """Job scheduling: queue, concurrency, scope checks and the worktree lifecycle of each job."""
 
 import asyncio
+import contextlib
 import logging
 import time
 from collections.abc import Iterable
@@ -58,10 +59,7 @@ class Manager:
             if job.repo != repo:
                 continue
             if job.active:
-                job.error = f"server stopped while the job was {job.state}"
-                job.state = "lost"
-                job.ended_at = job.ended_at or time.time()
-                job.save()
+                self._end(job, "lost", f"server stopped while the job was {job.state}")
             self.jobs[job.id] = job
 
     # -- public API --------------------------------------------------------------------------
@@ -138,12 +136,10 @@ class Manager:
             return all(ended) if all_ else any(ended)
 
         if targets and timeout > 0:
-            try:
+            with contextlib.suppress(TimeoutError):
                 async with asyncio.timeout(timeout):
                     while not done():
                         await self._changed.wait()
-            except TimeoutError:
-                pass
         return targets
 
     async def details(self, job_id: str, with_diff: bool = False) -> Details:
@@ -165,10 +161,7 @@ class Manager:
         """Cancel a queued job, or kill a running one (its worktree is kept)."""
         job = self.get(job_id)
         if job.state == "queued":
-            job.state = "cancelled"
-            job.ended_at = time.time()
-            job.save()
-            self._notify()
+            self._end(job, "cancelled")
             self._schedule()
         elif job.state == "running":
             task = self._tasks[job.id]
@@ -246,6 +239,13 @@ class Manager:
         job.save()
         self._notify()
 
+    def _end(self, job: Job, state: str, error: str | None = None) -> None:
+        """Move a job that is not running (or never ran) to a final state."""
+        job.state, job.ended_at = state, time.time()
+        job.error = error or job.error
+        job.save()
+        self._notify()
+
     def _notify(self) -> None:
         """Wake everything blocked in wait()."""
         self._changed.set()
@@ -287,9 +287,7 @@ class Manager:
                 continue
             verdict, detail = self._base_of(job)
             if verdict == "fail":
-                job.state, job.error, job.ended_at = "failed", detail, time.time()
-                job.save()
-                self._notify()
+                self._end(job, "failed", detail)
                 continue
             blocked = verdict == "wait" or slots <= 0
             blocked = blocked or any(overlaps(job.scope, other) for other in reserved)
@@ -323,7 +321,7 @@ class Manager:
     async def _execute(self, job: Job) -> None:
         try:
             worktree = self._worktree_path(job)
-            base_sha = await gitops.head(self.repo, job.base_ref or "HEAD")
+            base_sha = await gitops.head(self.repo, job.base_ref)
             await gitops.add_worktree(self.repo, worktree, job.branch, base_sha)
             job.base_ref, job.worktree = base_sha, worktree
             before = await self._main_state()
