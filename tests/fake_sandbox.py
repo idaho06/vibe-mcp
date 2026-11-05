@@ -8,6 +8,8 @@ Directive keys (all optional):
   message text        final assistant message (default "Done.")
   exit code           exit status (default 0)
   outcome, stop_reason, error, cost, tokens   values for export.json
+  by_angle {angle: directive}   overrides for a fan-out reviewer with that angle
+  merge directive     overrides for a fan-out merge job
   no_export           skip export.json (like a sandbox failure)
   huge_line n         stream one effect line of about n bytes
   spawn_child         start `sleep 300` in the same process group, pid written to RUN/child.pid
@@ -17,6 +19,7 @@ Always writes RUN/argv.json with the cwd and arguments it received.
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -49,11 +52,17 @@ def main(argv: list[str]) -> int:
 
     try:
         text = Path(opts["--prompt-file"]).read_text()
-        directive = json.loads(text.rsplit("## Task\n\n", 1)[-1])  # after a skill preamble, if any
+        tail = text.rsplit("## Task\n\n", 1)[-1]  # after a skill preamble, if any
+        directive, _ = json.JSONDecoder().raw_decode(tail)  # ignores text appended after the spec
     except ValueError:
         directive = {}
     if not isinstance(directive, dict):
         directive = {}
+    # fan-out: a reviewer's prompt names its angle; a merge job's prompt carries the findings
+    if angle := re.search(r"## Your angle: ([\w-]+)", text):
+        directive = {**directive, **directive.get("by_angle", {}).get(angle.group(1), {})}
+    elif "## Findings from independent reviewers" in text:
+        directive = {**directive, **directive.get("merge", {})}
 
     if directive.get("ignore_term"):
         signal.signal(signal.SIGTERM, signal.SIG_IGN)

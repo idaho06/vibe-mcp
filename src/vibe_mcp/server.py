@@ -61,6 +61,8 @@ def build_server(cfg: Config | None = None, cwd: Path | None = None) -> MCPServe
 
         spec: complete and self-contained; Vibe sees neither this chat nor project docs.
         skill: name of a Vibe skill (.vibe/skills/<name>/SKILL.md in the repo or ~) to follow.
+        A skill folder with angles/ runs parallel read-only reviewers, then a merge job: you get
+        the merge job's id.
         scope: repo-relative paths the task may touch; jobs with overlapping scopes run one
         after another (omit = whole repo). base_job: build on another job's result.
         Returns at once. Then: vibe_wait, vibe_result, vibe_apply.

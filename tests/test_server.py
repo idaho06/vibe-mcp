@@ -154,3 +154,33 @@ async def test_submit_with_a_skill_and_the_error_for_a_wrong_name(
 
     error = await call_error(client, "vibe_submit", spec="x", skill="simplyfy")
     assert "unknown skill 'simplyfy'" in error and "available: simplify" in error
+
+
+async def test_a_fanout_skill_through_the_mcp_looks_like_one_job(
+    client: Client, repo: Path
+) -> None:
+    folder = repo / ".vibe" / "skills" / "team"
+    (folder / "angles").mkdir(parents=True)
+    (folder / "SKILL.md").write_text("---\nname: team\n---\nMerge the findings.")
+    for angle in ("reuse", "efficiency"):
+        (folder / "angles" / f"{angle}.md").write_text(f"Look at {angle}.")
+    task = spec(
+        by_angle={
+            "reuse": {"message": "a.py:1 - [HIGH] dup", "cost": 0.02},
+            "efficiency": {"cost": 0.03},
+        },
+        merge={"message": "merged", "cost": 0.05},
+    )
+
+    submitted = await call(client, "vibe_submit", spec=task, skill="team", title="cleanup")
+    job_id = submitted.split()[0]
+    assert "queued" in submitted  # the merge job: it waits for its reviewers
+    assert (
+        len((await call(client, "vibe_wait", timeout=0)).splitlines()) == 1
+    )  # reviewers are hidden
+
+    waited = await call(client, "vibe_wait", job_ids=[job_id], timeout=30, wait_all=True)
+    assert waited.startswith(f"{job_id} finished")
+    result = await call(client, "vibe_result", job_id=job_id)
+    assert "vibe says: merged" in result
+    assert "reviewers: 2 jobs, $0.0500 (merge $0.0500, total $0.1000)" in result

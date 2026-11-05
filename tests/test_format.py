@@ -114,3 +114,25 @@ def test_apply_and_conflict_texts() -> None:
     conflict = conflict_text(job(worktree=Path("/wt/x")), ["a.txt", "b.txt"])
     assert "CONFLICT" in conflict and "a.txt, b.txt" in conflict
     assert "vibe/a1b2c3" in conflict and "/wt/x" in conflict and "unchanged" in conflict
+
+
+def test_a_queued_job_shows_its_progress_text() -> None:
+    waiting = job(title="cleanup", last_action="reviewers 2/4 done")
+    assert status_line(waiting) == "a1b2c3 queued (reviewers 2/4 done) - cleanup"
+    assert status_line(job(state="running", started_at=1, step=0, last_action="stale"), now=3) == (
+        "a1b2c3 running 2s"
+    )  # the progress text is only for queued jobs
+
+
+def test_a_readonly_job_does_not_claim_that_nothing_was_committed() -> None:
+    quiet = finished(readonly=True, final_message="(none)")
+    text = result_text(quiet, Details(), Config())
+    assert "no changes committed" not in text and "branch:" not in text
+    assert "no changes committed" in result_text(finished(), Details(), Config())  # ordinary job
+
+
+def test_the_group_cost_line_adds_reviewers_to_the_merge_job() -> None:
+    merged = finished(depends_on=("a", "b", "c"), reviewers_cost=0.0912, cost_usd=0.0388)
+    text = result_text(merged, Details(), Config())
+    assert "reviewers: 3 jobs, $0.0912 (merge $0.0388, total $0.1300)" in text
+    assert "reviewers:" not in result_text(finished(), Details(), Config())

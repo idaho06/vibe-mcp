@@ -7,7 +7,7 @@ import time
 from collections.abc import Iterable
 from pathlib import Path
 
-from vibe_mcp import context, gitops, runner, skills
+from vibe_mcp import context, fanout, gitops, runner, skills
 from vibe_mcp.config import Config
 from vibe_mcp.gitops import GitError
 from vibe_mcp.jobs import CLOSED, USABLE_BASE, Details, Job, load_all, new_id, run_dir_for
@@ -76,8 +76,9 @@ class Manager:
         if not spec.strip():
             raise ManagerError("spec is empty")
         try:
-            preamble = context.blocks(self.repo, self.cfg.context_files)
-            preamble += skills.block(skill, self.repo) if skill else ""
+            project_context = context.blocks(self.repo, self.cfg.context_files)
+            fan = skills.fanout(skill, self.repo) if skill else None
+            preamble = project_context + (skills.block(skill, self.repo) if skill else "")
         except skills.SkillError as exc:
             raise ManagerError(str(exc)) from exc
         if preamble:
@@ -98,6 +99,20 @@ class Manager:
         if max_price < 0:
             raise ManagerError(f"max_price must be >= 0, got {max_price}")
 
+        if fan:
+            if base_job is not None:
+                raise ManagerError("base_job cannot be combined with a fan-out skill")
+            return self._enqueue_fanout(
+                fan,
+                skill=skill or "",
+                project_context=project_context,
+                preamble=preamble,
+                spec=spec,
+                title=title.strip(),
+                scope=job_scope,
+                limits=(max_turns, time_limit, max_price),
+            )
+
         job_id = new_id(self.jobs)
         job = Job(
             id=job_id,
@@ -114,6 +129,45 @@ class Manager:
             max_price=max_price,
         )
         return self.enqueue(job)
+
+    def _enqueue_fanout(
+        self,
+        fan: skills.Fanout,
+        *,
+        skill: str,
+        project_context: str,
+        preamble: str,
+        spec: str,
+        title: str,
+        scope: tuple[str, ...],
+        limits: tuple[int, int, float],
+    ) -> Job:
+        """Queue one read-only reviewer per angle plus the merge job; return the merge job."""
+        try:
+            base = fanout.pin(self.repo, self._default_base())  # one commit for the whole group
+        except ValueError as exc:
+            raise ManagerError(str(exc)) from exc
+        max_turns, time_limit, max_price = limits
+        *reviewers, merge = fanout.build(
+            cfg=self.cfg,
+            repo=self.repo,
+            taken=self.jobs,
+            skill=skill,
+            angles=fan.angles,
+            context=project_context,
+            merge_preamble=preamble,
+            spec=spec,
+            title=title,
+            scope=scope,
+            max_turns=max_turns,
+            time_limit=time_limit,
+            max_price=max_price,
+            base_ref=base,
+            readonly=fan.readonly,
+        )
+        for reviewer in reviewers:
+            self.enqueue(reviewer)
+        return self.enqueue(merge)
 
     def enqueue(self, job: Job) -> Job:
         """Register a prepared job and start it as soon as the scheduler allows."""
@@ -348,6 +402,10 @@ class Manager:
                 self.repo, worktree, None if job.readonly else job.branch, base_sha
             )
             job.base_ref, job.worktree = base_sha, worktree
+            if job.depends_on and not job.appendix:
+                reviewers = [self.jobs[d] for d in job.depends_on]
+                job.appendix = fanout.appendix(reviewers)
+                job.reviewers_cost = sum(r.cost_usd for r in reviewers)
             before = await self._main_state()
 
             code = await runner.run(job, self.cfg, self._notify)
@@ -384,5 +442,8 @@ class Manager:
         job.pid = None
         job.save()
         self._tasks.pop(job.id, None)
+        parent = self.jobs.get(job.parent) if job.parent else None
+        if parent is not None and parent.state == "queued":
+            parent.last_action = fanout.progress([self.jobs[d] for d in parent.depends_on])
         self._notify()
         self._schedule()

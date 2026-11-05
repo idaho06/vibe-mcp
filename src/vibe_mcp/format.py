@@ -25,6 +25,8 @@ def status_line(job: Job, now: float | None = None) -> str:
         parts.append(duration(end - job.started_at))
     if job.state == "running" and job.step:
         parts.append(f"step {job.step}: {job.last_action}")
+    elif job.state == "queued" and job.last_action:  # e.g. "reviewers 2/4 done" for a fan-out
+        parts.append(f"({job.last_action})")
     if job.cost_usd:
         parts.append(f"${job.cost_usd:.4f}")
     if job.error and not job.active:
@@ -49,11 +51,17 @@ def result_text(job: Job, details: Details, cfg: Config) -> str:
         lines.append(f"SCOPE VIOLATIONS (outside {scope}): {', '.join(details.violations)}")
     if details.stat:
         lines.append(details.stat)
-    elif not job.commit and not job.active:
+    elif not job.commit and not job.active and not job.readonly:
         lines.append("no changes committed")
     if details.added:
         lines.append("added: " + ", ".join(details.added))
     lines.append(f"tokens: {job.tokens}")
+    if job.reviewers_cost:
+        total = job.reviewers_cost + job.cost_usd
+        lines.append(
+            f"reviewers: {len(job.depends_on)} jobs, ${job.reviewers_cost:.4f} "
+            f"(merge ${job.cost_usd:.4f}, total ${total:.4f})"
+        )
     if job.worktree and job.state not in CLOSED:
         lines.append(f"branch: {job.branch}")
         lines.append(f"worktree: {job.worktree}")
