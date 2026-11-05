@@ -19,7 +19,8 @@ read-only: your report is the whole result.
   (injection, path traversal, unsafe deserialization, secrets in code), missing error handling for
   errors that can actually happen, off-by-one and boundary errors, and broken contracts between
   callers and callees. Not style, naming, formatting or taste.
-- **Run only what the task tells you to run** (for example a test command). Otherwise read code only.
+- **Run only what the task tells you to run** (for example a test command). Otherwise read code only;
+  read-only commands such as `git diff`, `grep -n` and `nl -ba` are always fine.
 
 ## Method
 
@@ -28,7 +29,9 @@ read-only: your report is the whole result.
 2. For each suspicion, build a concrete failure: the input or state that triggers it and what goes
    wrong. If you cannot, drop it.
 3. Re-read the surrounding code to make sure nothing else already handles the case.
-4. Rank what remains by impact.
+4. Get every line number from tool output: run `grep -n` or `nl -ba <file>` on the exact line and copy
+   the number. Never count lines yourself; miscounted line numbers are the most common error in reports.
+5. Rank what remains by impact.
 
 ## Final report
 
