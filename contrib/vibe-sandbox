@@ -111,7 +111,7 @@ done
 
 if [ "$check" = 1 ]; then
   bwrap "${args[@]}" -- /bin/sh -c '
-    for p in "$HOME/.claude" "$HOME/.ssh" "$HOME/.cargo/credentials.toml" "$HOME/tmp/mistral.key" "$HOME/.gnupg"; do
+    for p in "$HOME/.claude" "$HOME/.ssh" "$HOME/.cargo/credentials.toml" "$HOME/.gnupg"; do
       if [ -e "$p" ]; then echo "VISIBLE  $p"; else echo "hidden   $p"; fi
     done
     for p in "$HOME/.vibe/config.toml" /etc/passwd; do
