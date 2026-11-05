@@ -142,8 +142,9 @@ mkdir -p ~/.vibe/skills && cp -r contrib/skills/* ~/.vibe/skills/
 - `code-review` is read-only and reports real defects, each with the input that triggers it.
 
 Both never ask questions, stay inside the scope the task names, run only the commands the task gives
-them, and end with a short fixed-format report. They are single-agent: nothing like a multi-agent
-review. Write your own for anything else, or override these per project.
+them, and end with a short fixed-format report. They are single-agent: one session does the whole job.
+For several reviewers working in parallel, see [Fan-out skills](#fan-out-skills-parallel-reviewers)
+below. Write your own for anything else, or override these per project.
 
 A third, `code-simplifier`, is in [`contrib/skills-apache`](contrib/skills-apache): an adaptation of
 Anthropic's Apache-2.0 [code-simplifier](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/code-simplifier)
@@ -154,6 +155,60 @@ digits and hyphens) and a `description`, then the instructions. The frontmatter 
 description if it contains `: `** (a colon followed by a space), or Vibe rejects the file. Remember the
 job is headless: the skill should say not to ask questions, how to find its target, and how short the
 final report must be, because Claude pays for every line of the result.
+
+### Fan-out skills (parallel reviewers)
+
+> **Experimental.** Tested with a fake sandbox; not yet measured against the real model for quality.
+
+A skill whose folder has an `angles/` subfolder is run by the server as a team: one **read-only
+reviewer per angle**, all in parallel, then **one merge job** that reads their reports. The model is
+not asked to spawn anything itself. Claude sees a single job:
+
+```
+vibe_submit(skill="review-fanout", spec="Review the changes in HEAD~3..HEAD ...")   ->  job id
+vibe_wait / vibe_result                                                              ->  one report
+```
+
+```
+review-fanout/
+  SKILL.md          instructions for the merge job (verify, merge, report)
+  fanout.toml       optional: `readonly = true` if the merge job only reports
+  angles/
+    logic.md        what one reviewer looks for: one file per reviewer
+    security.md
+```
+
+Angle names are the file names (letters, digits, hyphens and underscores). The server adds a standard
+wrapper to every reviewer: read-only, never ask questions, do not carry out the task text (it only
+names the target), and report findings in one fixed line format.
+
+Two packs are shipped in [`contrib/skills`](contrib/skills) and installed by the `cp` above:
+
+- `simplify-fanout`: four reviewers (`duplication`, `dead-weight`, `structure`, `wasted-work`). The
+  merge job checks their findings against the code and applies the safe ones. `vibe_apply` works on
+  it as on any other job.
+- `review-fanout`: five reviewers (`logic`, `callers`, `state-and-timing`, `edges`, `security`). The
+  merge job verifies each candidate, drops the ones the code refutes, and reports up to 12 findings.
+  It is read-only, so there is nothing to apply.
+
+How it behaves:
+
+- **One commit for everyone.** The base is pinned to the commit that is `HEAD` when you submit, so the
+  reviewers and the merge job see the same code even if you commit meanwhile. For the same reason
+  `base_job` cannot be combined with a fan-out skill.
+- **Reviewers are hidden.** `vibe_wait` without ids lists only the merge job, which shows progress
+  such as `queued (reviewers 2/5 done)`. Asking for a reviewer by its id still works.
+- **Failures are tolerated.** If some reviewers fail, the merge job still runs and its prompt names
+  the missing angles. If all of them fail, the merge job fails with a message saying so. Cancelling the
+  merge job cancels its reviewers.
+- **Reviewers are read-only by instruction, not by the sandbox.** A reviewer runs in a throwaway
+  detached worktree with no branch. If it changes files anyway, the changes are discarded and the job
+  carries a warning. Its worktree is removed as soon as it ends.
+- **Cost.** A fan-out is one session per reviewer plus the merge job, so the cost scales with the
+  number of angles, and `vibe_result` shows `reviewers: 5 jobs, $… (merge $…, total $…)`. The limits
+  `max_turns`, `time_limit` and `max_price` apply to each job, and `context_files` are sent to every
+  one of them. `max_concurrent` (default 3) decides how many run at once, and `isolation = "serial"` runs
+  them one after another. For a small change, a single-agent skill is much cheaper.
 
 ### Project context
 
