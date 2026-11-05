@@ -124,3 +124,20 @@ def test_unknown_command_is_rejected() -> None:
     with pytest.raises(SystemExit) as exc:
         cli.main(["bogus"])
     assert exc.value.code == 2
+
+
+def test_doctor_reports_and_exits_nonzero_only_on_failures(
+    config_file: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    from vibe_mcp.doctor import Check
+
+    checks = [Check("git", "ok", "git version 2.47.0"), Check("repo", "warn", "no commits")]
+    monkeypatch.setattr(cli, "run_checks", lambda cfg: checks)
+    assert cli.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "[OK  ] git: git version 2.47.0" in out and "[WARN] repo: no commits" in out
+
+    checks.append(Check("bwrap", "fail", "bubblewrap is not installed"))
+    assert cli.main(["doctor"]) == 1
+    out = capsys.readouterr().out
+    assert "[FAIL] bwrap: bubblewrap is not installed" in out and "1 problem" in out

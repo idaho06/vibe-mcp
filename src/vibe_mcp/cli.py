@@ -10,6 +10,7 @@ from pathlib import Path
 
 from vibe_mcp import config
 from vibe_mcp.config import ConfigError
+from vibe_mcp.doctor import run_checks
 from vibe_mcp.format import duration
 from vibe_mcp.jobs import Job, load_all
 from vibe_mcp.manager import ManagerError, find_repo
@@ -55,6 +56,15 @@ def _stats(as_json: bool) -> int:
     return 0
 
 
+def _doctor() -> int:
+    checks = run_checks(config.load())
+    for check in checks:
+        print(f"[{check.status.upper():<4}] {check.name}: {check.detail}")
+    failures = sum(c.status == "fail" for c in checks)
+    print(f"{failures} problem(s) found" if failures else "all required checks passed")
+    return 1 if failures else 0
+
+
 def _serve() -> int:
     cfg = config.load()
     repo = asyncio.run(find_repo(Path.cwd()))  # fail early, with a plain message
@@ -70,11 +80,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="vibe-mcp", description=__doc__)
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("serve", help="run the MCP server on stdio (the default)")
+    commands.add_parser("doctor", help="check the machine for what vibe-mcp needs")
     stats = commands.add_parser("stats", help="summarize all saved jobs: count, cost, tokens, time")
     stats.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args(argv)
     try:
-        return _stats(args.json) if args.command == "stats" else _serve()
+        if args.command == "stats":
+            return _stats(args.json)
+        return _doctor() if args.command == "doctor" else _serve()
     except (ConfigError, ManagerError) as exc:
         print(f"vibe-mcp: {exc}", file=sys.stderr)
         return 2
