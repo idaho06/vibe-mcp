@@ -85,7 +85,7 @@ Read `contrib/vibe-sandbox` before you rely on it: it decides what Vibe can see 
 
 | Tool | Purpose |
 |---|---|
-| `vibe_submit(spec, title?, scope?, base_job?, max_turns?, time_limit?, max_price?)` | Queue a task and return its job id at once. `spec` must be complete and self-contained: Vibe sees neither the chat nor your project docs. |
+| `vibe_submit(spec, title?, scope?, base_job?, max_turns?, time_limit?, max_price?, skill?)` | Queue a task and return its job id at once. `spec` must be complete and self-contained: Vibe sees neither the chat nor your project docs. `skill` names a skill whose instructions go in front of the task (see [Skills](#skills-and-project-context)). |
 | `vibe_wait(job_ids?, timeout=120, wait_all=false)` | Block until any (or all) of the jobs end, or `timeout` seconds pass. `timeout=0` is a status check. Default: all active jobs. |
 | `vibe_result(job_id, diff=false)` | Vibe's own summary (unverified), diffstat, added files, scope violations, tokens, cost. `diff=true` adds the capped diff. |
 | `vibe_cancel(job_id)` | Cancel a queued job or kill a running one. Its worktree is kept. |
@@ -110,6 +110,72 @@ clear message if that job failed, was cancelled, applied or discarded.
 - `isolation = "serial"`: one job at a time, and each job starts from the latest finished job's
   branch, so work accumulates like a single shared worktree.
 
+## Skills and project context
+
+A job runs in a fresh worktree, which holds only the files git tracks. Anything kept out of git
+(a gitignored `.vibe/` folder, an untracked `AGENTS.md`) is missing there, and Vibe cannot see your
+main checkout. Two features bring that material in. Both read from your **main checkout** when the job
+is submitted, so they work even for files git ignores.
+
+### Skills
+
+A skill is a `SKILL.md` file of instructions. `vibe_submit(skill="simplify", spec="...")` puts the
+skill's text (without its frontmatter) in front of your task. The server looks for it in:
+
+1. `<repo>/.vibe/skills/<name>/SKILL.md` (per project; wins), then
+2. `~/.vibe/skills/<name>/SKILL.md` (global).
+
+These are Vibe's own skill folders, so the same files also work in interactive Vibe. A wrong name is
+rejected at once with the list of available skills, and nothing is queued.
+
+**Shipped skills.** [`contrib/skills`](contrib/skills) has two lightweight skills written for
+unattended jobs. Install them once:
+
+```sh
+mkdir -p ~/.vibe/skills && cp -r contrib/skills/* ~/.vibe/skills/
+```
+
+- `simplify` cleans up the code your task names (reuse, dead code, nesting, wasted work) without
+  changing behavior, and edits the files in place.
+- `code-review` is read-only and reports real defects, each with the input that triggers it.
+
+Both never ask questions, stay inside the scope the task names, run only the commands the task gives
+them, and end with a short fixed-format report. They are single-agent: nothing like a multi-agent
+review. Write your own for anything else, or override these per project.
+
+**Writing a skill.** Create `<name>/SKILL.md` with frontmatter holding a `name` (lowercase letters,
+digits and hyphens) and a `description`, then the instructions. The frontmatter is YAML: **quote the
+description if it contains `: `** (a colon followed by a space), or Vibe rejects the file. Remember the
+job is headless: the skill should say not to ask questions, how to find its target, and how short the
+final report must be, because Claude pays for every line of the result.
+
+### Project context
+
+`context_files` in the config lists repo files to put in front of every task, for example your coding
+standards when `AGENTS.md` is not tracked in git:
+
+```toml
+context_files = ["AGENTS.md"]
+```
+
+Missing or empty files are skipped, and each file is cut at 50,000 characters. List only files Vibe
+cannot see by itself: a tracked file is already in the worktree, and `AGENTS.md` is one Vibe reads on
+its own. The default is empty, so specs stay self-contained unless you opt in.
+
+### Naming the target of a cleanup or review
+
+The worktree starts at `HEAD`, so uncommitted changes in your checkout are **not** in the job. Commit
+first, then say exactly what to work on in the spec: "simplify the changes in `HEAD~3..HEAD`" or "review
+`src/parser.py`". The shipped skills do nothing and say so when the task names no target.
+
+### Cost
+
+Every job pays Vibe's fixed per-session overhead, and a skill adds its own text (about 400 to 600
+tokens for the shipped ones). In tests with Vibe 3.1.0 and `mistral-large-4` on a 45-line change, using
+larger skills than the shipped ones, a review cost about $0.02 to $0.03 and a cleanup $0.04 to $0.06.
+Vibe's cost report may not include subagents, so treat figures as lower bounds, and check
+`vibe-mcp stats` on your own work.
+
 ## Configuration
 
 Optional file `~/.config/vibe-mcp/config.toml` (or the path in `$VIBE_MCP_CONFIG`). Unknown keys and
@@ -127,6 +193,7 @@ wrong types are rejected at startup.
 | `max_price` | `0` | default per-job price cap in dollars; 0 = no cap |
 | `max_message_chars` | `2000` | cap on Vibe's final message in results |
 | `max_diff_bytes` | `20000` | cap on the diff in results |
+| `context_files` | `[]` | repo files whose text is put in front of every task (see [Skills](#skills-and-project-context)) |
 
 ## Things to know
 
