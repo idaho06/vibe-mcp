@@ -1,7 +1,13 @@
+import json
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+
+from vibe_mcp.config import Config
+from vibe_mcp.jobs import Job, run_dir_for
 
 
 @pytest.fixture
@@ -29,3 +35,27 @@ def repo(tmp_path: Path) -> Path:
     sh("git", "add", "-A", cwd=path)
     sh("git", "commit", "-q", "-m", "init", cwd=path)
     return path
+
+
+FAKE_SANDBOX = Path(__file__).parent / "fake_sandbox.py"
+
+
+@pytest.fixture
+def cfg(tmp_path: Path) -> Config:
+    """A config that runs the fake sandbox and keeps all data under tmp_path."""
+    command = shlex.join([sys.executable, str(FAKE_SANDBOX)])
+    return Config(sandbox_cmd=command, data_dir=tmp_path / "data")
+
+
+@pytest.fixture
+def new_job(cfg: Config, tmp_path: Path):
+    """Factory for a Job whose worktree is a plain directory and whose spec is a fake directive."""
+
+    def factory(directive: dict | str | None = None, job_id: str = "a1b2c3", **kw) -> Job:
+        worktree = tmp_path / "wt" / job_id
+        worktree.mkdir(parents=True, exist_ok=True)
+        spec = directive if isinstance(directive, str) else json.dumps(directive or {})
+        run_dir = run_dir_for(cfg.data_dir, job_id)
+        return Job(id=job_id, run_dir=run_dir, spec=spec, worktree=worktree, **kw)
+
+    return factory
