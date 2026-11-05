@@ -10,9 +10,11 @@ reviews while a cheaper one writes the code.
 - **Compact.** Results are short plain text (summary, diffstat, cost). The full diff is on request.
 - **Safe to merge.** `vibe_apply` stages a job's changes in your checkout and never commits.
 
-> **Status:** unit-tested against a fake sandbox (no network, no cost). The raw `vibe-sandbox`
-> invocation was checked against real Vibe 3.1.0, but the full MCP flow has not been smoke-tested
-> with a live Claude Code session yet.
+> **Status:** unit-tested against a fake sandbox (no network, no cost), and smoke-tested against
+> real Vibe 3.1.0 with the reference sandbox by a script driving the server over stdio: parallel
+> jobs, apply, conflict report, cancel (no processes left behind), writes outside the worktree,
+> and serial chaining. It has not been tried inside a live Claude Code session yet, so how Claude
+> Code sets the server's working directory and how long it lets `vibe_wait` block are unverified.
 
 ## Requirements
 
@@ -95,6 +97,10 @@ wrong types are rejected at startup.
 
 - **Vibe's code is unreviewed.** The server never runs tests or the code Vibe wrote. Read the diff
   (`vibe_result diff=true`), then run your own checks before committing.
+- **Trust the diff, not Vibe's report.** Vibe can say it wrote files outside its worktree, such as
+  into your checkout or another job's worktree. With the reference sandbox those writes land in a
+  throwaway in-memory filesystem and vanish, but Vibe still reports success. Only the committed
+  diff counts.
 - **Every job has a cost floor.** A one-line fix cost about 33K tokens (mostly Vibe's cached system
   prompt) and $0.013 in a test with Vibe 3.1.0. Delegate medium and large tasks, not one-liners.
 - **Jobs live with the server.** Closing Claude Code kills running jobs; queued and running jobs
