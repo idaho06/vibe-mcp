@@ -67,3 +67,25 @@ def test_data_dir_too_long_for_the_sandbox_socket(tmp_path: Path) -> None:
     long_dir = tmp_path / ("x" * 100)
     with pytest.raises(ConfigError, match="data_dir"):
         load(write(tmp_path, f'data_dir = "{long_dir}"\n'))
+
+
+def test_context_files_default_and_override(tmp_path: Path) -> None:
+    assert load(tmp_path / "nope.toml").context_files == ()
+    cfg = load(write(tmp_path, 'context_files = ["AGENTS.md", "docs/STYLE.md"]\n'))
+    assert cfg.context_files == ("AGENTS.md", "docs/STYLE.md")
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'context_files = "AGENTS.md"',
+        "context_files = [1]",
+        'context_files = [""]',
+        'context_files = ["/etc/passwd"]',
+        'context_files = ["../secret"]',
+        'context_files = ["a/../../b"]',
+    ],
+)
+def test_bad_context_files_are_rejected(tmp_path: Path, line: str) -> None:
+    with pytest.raises(ConfigError, match="context_files"):
+        load(write(tmp_path, line + "\n"))

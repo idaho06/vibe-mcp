@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from vibe_mcp.skills import SkillError, available, load, preamble
+from vibe_mcp.skills import SkillError, available, block, load
 
 
 def write(base: Path, name: str, text: str) -> None:
@@ -70,9 +70,7 @@ def test_names_that_could_escape_the_skill_folders_are_rejected(places, name: st
         load(name, repo, home)
 
 
-def test_preamble_frames_the_skill_and_leaves_room_for_the_task(places) -> None:
+def test_block_frames_the_skill_for_the_prompt(places) -> None:
     repo, home = places
     write(repo, "simplify", "---\nname: simplify\n---\nSteps.")
-    text = preamble("simplify", repo, home)
-    assert text.startswith("## Skill: simplify\n\nSteps.")
-    assert text.endswith("---\n\n## Task\n\n")
+    assert block("simplify", repo, home) == "## Skill: simplify\n\nSteps.\n\n---\n\n"

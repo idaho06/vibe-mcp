@@ -3,7 +3,7 @@
 import os
 import tomllib
 from dataclasses import dataclass, field, fields
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 DEFAULT_PATH = Path("~/.config/vibe-mcp/config.toml")
 ISOLATION_MODES = ("worktree", "serial")
@@ -32,6 +32,7 @@ class Config:
     max_price: float = 0
     max_message_chars: int = 2000
     max_diff_bytes: int = 20000
+    context_files: tuple[str, ...] = ()  # repo files whose text is put in front of every task
 
     @property
     def concurrency(self) -> int:
@@ -59,6 +60,14 @@ def _check(key: str, value: object) -> object:
     elif key in _STRINGS:
         if not isinstance(value, str) or not value:
             raise ConfigError(f"{key} must be a non-empty string, got {value!r}")
+    elif key == "context_files":
+        if not isinstance(value, list) or not all(isinstance(v, str) and v for v in value):
+            raise ConfigError(f"{key} must be a list of non-empty strings, got {value!r}")
+        for name in value:
+            path = PurePosixPath(name)
+            if path.is_absolute() or ".." in path.parts:
+                raise ConfigError(f"{key} entries must be paths inside the repo, got {name!r}")
+        return tuple(value)
     elif key == "isolation":
         if value not in ISOLATION_MODES:
             raise ConfigError(f"{key} must be one of {ISOLATION_MODES}, got {value!r}")

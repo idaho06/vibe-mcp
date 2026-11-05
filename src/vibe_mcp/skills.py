@@ -45,6 +45,6 @@ def load(name: str, repo: Path, home: Path | None = None) -> str:
     raise SkillError(f"unknown skill {name!r}; no skills found in {where}")
 
 
-def preamble(name: str, repo: Path, home: Path | None = None) -> str:
-    """The text that goes in front of the task in the job's prompt."""
-    return f"## Skill: {name}\n\n{load(name, repo, home)}\n\n---\n\n## Task\n\n"
+def block(name: str, repo: Path, home: Path | None = None) -> str:
+    """The skill as a block of the job's prompt."""
+    return f"## Skill: {name}\n\n{load(name, repo, home)}\n\n---\n\n"

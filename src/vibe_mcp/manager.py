@@ -7,7 +7,7 @@ import time
 from collections.abc import Iterable
 from pathlib import Path
 
-from vibe_mcp import gitops, runner, skills
+from vibe_mcp import context, gitops, runner, skills
 from vibe_mcp.config import Config
 from vibe_mcp.gitops import GitError
 from vibe_mcp.jobs import CLOSED, USABLE_BASE, Details, Job, load_all, new_id, run_dir_for
@@ -73,9 +73,12 @@ class Manager:
         if not spec.strip():
             raise ManagerError("spec is empty")
         try:
-            preamble = skills.preamble(skill, self.repo) if skill else ""
+            preamble = context.blocks(self.repo, self.cfg.context_files)
+            preamble += skills.block(skill, self.repo) if skill else ""
         except skills.SkillError as exc:
             raise ManagerError(str(exc)) from exc
+        if preamble:
+            preamble += "## Task\n\n"
         try:
             job_scope = normalize(scope)
         except ValueError as exc:
