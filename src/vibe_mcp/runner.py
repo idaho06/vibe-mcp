@@ -14,6 +14,7 @@ from vibe_mcp.config import Config
 from vibe_mcp.jobs import Job
 
 _ACTION_CHARS = 100
+_STDERR_TAIL = 300  # characters of stderr quoted in an error message
 # Vibe enforces --time-limit itself; this is the backstop if it hangs.
 HARD_TIMEOUT_GRACE = 60.0
 # After SIGTERM, how long the process group gets before SIGKILL.
@@ -109,6 +110,18 @@ def apply_export(job: Job, export: dict | None) -> None:
 def final_state(exit_code: int) -> str:
     """vibe-sandbox returns Vibe's exit code: 0 finished, 3 stopped at a limit, else failed."""
     return {0: "finished", 3: "limit"}.get(exit_code, "failed")
+
+
+def exit_error(run_dir: Path, code: int) -> str:
+    """Error text for a failed run that gave none in export.json: exit code and end of stderr."""
+    try:
+        with (run_dir / "stderr.txt").open("rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - 4 * _STDERR_TAIL))  # never read a huge file whole
+            tail = f.read().decode(errors="replace")[-_STDERR_TAIL:].strip()
+    except OSError:
+        tail = ""
+    return f"vibe-sandbox exited with code {code}" + (f": {tail}" if tail else "")
 
 
 def _open_logs(job: Job):

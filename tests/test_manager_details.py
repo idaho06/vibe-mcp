@@ -1,6 +1,6 @@
 import pytest
 
-from vibe_mcp.manager import Details
+from vibe_mcp.jobs import Details
 
 from .conftest import finish, spec
 

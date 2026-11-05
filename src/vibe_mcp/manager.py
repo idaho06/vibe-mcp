@@ -5,13 +5,12 @@ import contextlib
 import logging
 import time
 from collections.abc import Iterable
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from vibe_mcp import gitops, runner
 from vibe_mcp.config import Config
 from vibe_mcp.gitops import GitError
-from vibe_mcp.jobs import USABLE_BASE, Job, load_all, new_id, run_dir_for
+from vibe_mcp.jobs import CLOSED, USABLE_BASE, Details, Job, load_all, new_id, run_dir_for
 from vibe_mcp.scope import normalize, overlaps, violations
 
 log = logging.getLogger(__name__)
@@ -31,17 +30,6 @@ async def find_repo(cwd: Path) -> Path:
         return await gitops.toplevel(cwd)
     except GitError as exc:
         raise ManagerError(f"not inside a git repository: {cwd}") from exc
-
-
-@dataclass
-class Details:
-    """What a job changed, relative to the commit it started from."""
-
-    stat: str = ""
-    files: list[str] = field(default_factory=list)
-    added: list[str] = field(default_factory=list)
-    violations: list[str] = field(default_factory=list)  # changed files outside the job's scope
-    diff: str | None = None
 
 
 class Manager:
@@ -220,7 +208,7 @@ class Manager:
 
     def _check_closable(self, job: Job) -> None:
         """The refusals shared by apply and discard."""
-        if job.state in ("applied", "discarded"):
+        if job.state in CLOSED:
             raise ManagerError(f"job {job.id} was already {job.state}")
         if job.active:
             raise ManagerError(f"job {job.id} is {job.state}; wait for it or cancel it first")
@@ -311,13 +299,6 @@ class Manager:
     async def _main_state(self) -> tuple[str, str]:
         return await gitops.current_branch(self.repo), await gitops.head(self.repo)
 
-    def _exit_error(self, job: Job, code: int) -> str:
-        try:
-            tail = (job.run_dir / "stderr.txt").read_text()[-300:].strip()
-        except OSError:
-            tail = ""
-        return f"vibe-sandbox exited with code {code}" + (f": {tail}" if tail else "")
-
     async def _execute(self, job: Job) -> None:
         try:
             worktree = self._worktree_path(job)
@@ -331,7 +312,7 @@ class Manager:
             runner.apply_export(job, runner.read_export(job.run_dir))
             job.state = runner.final_state(code)
             if job.state == "failed" and not job.error:
-                job.error = self._exit_error(job, code)
+                job.error = runner.exit_error(job.run_dir, code)
             label = job.title or job.spec.strip().splitlines()[0][:72]
             job.commit = await gitops.commit_all(worktree, f"vibe {job.id}: {label}")
             if await self._main_state() != before:

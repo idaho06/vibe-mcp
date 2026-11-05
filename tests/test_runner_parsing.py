@@ -9,6 +9,7 @@ from vibe_mcp.runner import (
     Event,
     apply_export,
     build_command,
+    exit_error,
     final_state,
     parse_stream_line,
     read_export,
@@ -166,3 +167,22 @@ def test_apply_export_keeps_an_error_recorded_earlier(tmp_path: Path) -> None:
 )
 def test_final_state_follows_the_exit_code(exit_code: int, expected: str) -> None:
     assert final_state(exit_code) == expected
+
+
+def test_exit_error_quotes_the_end_of_stderr(tmp_path: Path) -> None:
+    (tmp_path / "stderr.txt").write_text("noise\n" * 5 + "vibe-sandbox: boom\n")
+    message = exit_error(tmp_path, 2)
+    assert message.startswith("vibe-sandbox exited with code 2: ")
+    assert message.endswith("vibe-sandbox: boom")
+
+
+def test_exit_error_without_usable_stderr(tmp_path: Path) -> None:
+    assert exit_error(tmp_path, 3) == "vibe-sandbox exited with code 3"  # no file
+    (tmp_path / "stderr.txt").write_text("")
+    assert exit_error(tmp_path, 3) == "vibe-sandbox exited with code 3"  # empty file
+
+
+def test_exit_error_reads_only_the_tail_of_a_huge_stderr(tmp_path: Path) -> None:
+    (tmp_path / "stderr.txt").write_bytes(b"x" * 5_000_000 + b"\nthe end")
+    message = exit_error(tmp_path, 1)
+    assert message.endswith("the end") and len(message) < 400

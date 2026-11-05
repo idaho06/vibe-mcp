@@ -4,8 +4,7 @@ import pytest
 
 from vibe_mcp.config import Config
 from vibe_mcp.format import apply_text, conflict_text, duration, result_text, status_line
-from vibe_mcp.jobs import Job
-from vibe_mcp.manager import Details
+from vibe_mcp.jobs import Details, Job
 
 
 def job(**kw) -> Job:

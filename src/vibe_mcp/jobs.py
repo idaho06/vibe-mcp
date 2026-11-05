@@ -14,6 +14,8 @@ from vibe_mcp.scope import Scope
 log = logging.getLogger(__name__)
 
 ACTIVE = ("queued", "running")
+# Finished with for good: the branch and worktree are gone.
+CLOSED = ("applied", "discarded")
 # Jobs whose branch can be the base of a later job.
 USABLE_BASE = ("finished", "limit")
 
@@ -100,3 +102,14 @@ def load_all(data_dir: Path) -> list[Job]:
         except (OSError, ValueError, KeyError, TypeError) as exc:
             log.warning("skipping unreadable job file %s: %s", path, exc)
     return sorted(jobs, key=lambda j: j.created_at)
+
+
+@dataclass
+class Details:
+    """What a job changed, relative to the commit it started from."""
+
+    stat: str = ""
+    files: list[str] = field(default_factory=list)
+    added: list[str] = field(default_factory=list)
+    violations: list[str] = field(default_factory=list)  # changed files outside the job's scope
+    diff: str | None = None

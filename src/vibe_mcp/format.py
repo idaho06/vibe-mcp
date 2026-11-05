@@ -6,10 +6,7 @@ Everything a tool returns lands in Claude's context, so keep it short.
 import time
 
 from vibe_mcp.config import Config
-from vibe_mcp.jobs import Job
-from vibe_mcp.manager import Details
-
-_CLOSED = ("applied", "discarded")
+from vibe_mcp.jobs import CLOSED, Details, Job
 
 
 def duration(seconds: float) -> str:
@@ -57,7 +54,7 @@ def result_text(job: Job, details: Details, cfg: Config) -> str:
     if details.added:
         lines.append("added: " + ", ".join(details.added))
     lines.append(f"tokens: {job.tokens}")
-    if job.worktree and job.state not in _CLOSED:
+    if job.worktree and job.state not in CLOSED:
         lines.append(f"branch: {job.branch}")
         lines.append(f"worktree: {job.worktree}")
     lines.append(f"run: {job.run_dir}")
