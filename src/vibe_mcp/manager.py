@@ -4,13 +4,14 @@ import asyncio
 import logging
 import time
 from collections.abc import Iterable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from vibe_mcp import gitops, runner
 from vibe_mcp.config import Config
 from vibe_mcp.gitops import GitError
 from vibe_mcp.jobs import USABLE_BASE, Job, load_all, new_id, run_dir_for
-from vibe_mcp.scope import normalize, overlaps
+from vibe_mcp.scope import normalize, overlaps, violations
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +30,17 @@ async def find_repo(cwd: Path) -> Path:
         return await gitops.toplevel(cwd)
     except GitError as exc:
         raise ManagerError(f"not inside a git repository: {cwd}") from exc
+
+
+@dataclass
+class Details:
+    """What a job changed, relative to the commit it started from."""
+
+    stat: str = ""
+    files: list[str] = field(default_factory=list)
+    added: list[str] = field(default_factory=list)
+    violations: list[str] = field(default_factory=list)  # changed files outside the job's scope
+    diff: str | None = None
 
 
 class Manager:
@@ -133,6 +145,21 @@ class Manager:
             except TimeoutError:
                 pass
         return targets
+
+    async def details(self, job_id: str, with_diff: bool = False) -> Details:
+        """Diffstat, changed and added files, scope violations (and the diff) of a job's commit."""
+        job = self.get(job_id)
+        if not (job.commit and job.base_ref):
+            return Details()
+        base, tip = job.base_ref, job.commit
+        files = await gitops.changed_files(self.repo, base, tip)
+        return Details(
+            stat=await gitops.diff_stat(self.repo, base, tip),
+            files=files,
+            added=await gitops.added_files(self.repo, base, tip),
+            violations=violations(job.scope, files),
+            diff=await gitops.diff(self.repo, base, tip) if with_diff else None,
+        )
 
     async def cancel(self, job_id: str) -> Job:
         """Cancel a queued job, or kill a running one (its worktree is kept)."""
