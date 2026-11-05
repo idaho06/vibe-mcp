@@ -131,11 +131,19 @@ These are Vibe's own skill folders, so the same files also work in interactive V
 rejected at once with the list of available skills, and nothing is queued.
 
 **Shipped skills.** [`contrib/skills`](contrib/skills) has two lightweight skills written for
-unattended jobs. Install them once:
+unattended jobs, plus the two fan-out packs described [below](#fan-out-skills-parallel-reviewers).
+The server finds a skill by name in `<repo>/.vibe/skills/<name>/`, then in `~/.vibe/skills/<name>/`,
+and nowhere else, so copy the folders you want into one of them:
 
 ```sh
-mkdir -p ~/.vibe/skills && cp -r contrib/skills/* ~/.vibe/skills/
+mkdir -p ~/.vibe/skills
+cp -r contrib/skills/simplify contrib/skills/code-review ~/.vibe/skills/           # single agent
+cp -r contrib/skills/simplify-fanout contrib/skills/review-fanout ~/.vibe/skills/  # parallel reviewers
 ```
+
+Copy each folder whole: a fan-out skill needs its `angles/` subfolder, and `review-fanout` its
+`fanout.toml`. A skill of the same name that is already there is overwritten, so run
+`ls ~/.vibe/skills` first if you keep your own `simplify` or `code-review`.
 
 - `simplify` cleans up the code your task names (reuse, dead code, nesting, wasted work) without
   changing behavior, and edits the files in place.
@@ -158,7 +166,8 @@ final report must be, because Claude pays for every line of the result.
 
 ### Fan-out skills (parallel reviewers)
 
-> **Experimental.** Tested with a fake sandbox; not yet measured against the real model for quality.
+> **Experimental.** Tested with a fake sandbox, and in one run each against the real model (Vibe 3.1.0,
+> `mistral-large-4`). The measured numbers are at the end of this section; a larger sample would be better.
 
 A skill whose folder has an `angles/` subfolder is run by the server as a team: one **read-only
 reviewer per angle**, all in parallel, then **one merge job** that reads their reports. The model is
@@ -182,13 +191,13 @@ Angle names are the file names (letters, digits, hyphens and underscores). The s
 wrapper to every reviewer: read-only, never ask questions, do not carry out the task text (it only
 names the target), and report findings in one fixed line format.
 
-Two packs are shipped in [`contrib/skills`](contrib/skills) and installed by the `cp` above:
+Two packs are shipped in [`contrib/skills`](contrib/skills); install them with the second `cp` above:
 
 - `simplify-fanout`: four reviewers (`duplication`, `dead-weight`, `structure`, `wasted-work`). The
   merge job checks their findings against the code and applies the safe ones. `vibe_apply` works on
   it as on any other job.
 - `review-fanout`: five reviewers (`logic`, `callers`, `state-and-timing`, `edges`, `security`). The
-  merge job verifies each candidate, drops the ones the code refutes, and reports up to 12 findings.
+  merge job verifies each candidate, drops the ones the code refutes, and reports up to 8 findings, short enough to fit the result limit.
   It is read-only, so there is nothing to apply.
 
 How it behaves:
@@ -209,6 +218,17 @@ How it behaves:
   `max_turns`, `time_limit` and `max_price` apply to each job, and `context_files` are sent to every
   one of them. `max_concurrent` (default 3) decides how many run at once, and `isolation = "serial"` runs
   them one after another. For a small change, a single-agent skill is much cheaper.
+- **What we measured**, one run each, costs as Vibe reports them (they may exclude some overhead):
+
+  | Case | Single-agent skill | Fan-out |
+  |---|---|---|
+  | Review of a 45-line file with a planted off-by-one | about 30 s, $0.02 to $0.03 | 81 s, **$0.17** (5 reviewers $0.14, merge $0.03) |
+  | Cleanup of a 439-line, copy-pasted file | about 2 min, $0.12 (439 to 128 lines) | 101 s, **$0.21** (4 reviewers $0.13, merge $0.08), 439 to 105 lines |
+
+  All nine reviewers stayed read-only, even though the cleanup task said "edit only big.py". Both
+  groups found the planted bug or the main duplication; the review fan-out also found more edge cases,
+  with some severity inflation. The fan-out costs several times more for a modest gain on small
+  inputs, so use it where breadth matters: large diffs and changes you want checked twice.
 
 ### Project context
 

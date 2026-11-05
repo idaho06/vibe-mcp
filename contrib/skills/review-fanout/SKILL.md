@@ -33,11 +33,13 @@ the code and report only what holds up. You are read-only, and nobody can answer
      what would confirm it.
    - **REFUTED:** the code does not say that, or something else already guards it. Drop it.
 4. Take every line number from tool output (`grep -n` or `nl -ba <file>`), never by counting lines.
-5. Rank by impact and keep at most 12.
+5. Rank by impact and keep at most 8.
 
 ## Final report
 
-Under 25 lines. One line per finding, most serious first:
+Write nothing before or after the list. Under 20 lines, one line per finding, most serious first, each
+line at most 200 characters: the server cuts your final message at 2000 characters, and a cut report
+loses the lowest-ranked findings.
 
 `file:line - [HIGH|MEDIUM|LOW] the defect. Trigger: <input or state>. Effect: <what breaks>. (CONFIRMED|PLAUSIBLE)`
 
