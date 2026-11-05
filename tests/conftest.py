@@ -18,6 +18,16 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+@pytest.fixture(autouse=True)
+def isolated_home(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """Tests must never see the real ~/.vibe, ~/.config or ~/.local of whoever runs them."""
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    return home
+
+
 def sh(*args: str, cwd: Path) -> str:
     """Run git (or any command) synchronously for test setup."""
     done = subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True)
