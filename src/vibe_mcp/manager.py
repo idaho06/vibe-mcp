@@ -41,6 +41,7 @@ class Manager:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._changed = asyncio.Event()
         self._closing = False
+        self._git_lock = asyncio.Lock()  # serializes apply/discard on the main checkout
         for job in load_all(cfg.data_dir):
             if job.repo != repo:
                 continue
@@ -150,6 +151,40 @@ class Manager:
             raise ManagerError(f"job {job.id} is already {job.state}")
         return job
 
+    async def apply(self, job_id: str) -> list[str]:
+        """Stage the job's changes in the main checkout (no commit) and remove its worktree.
+
+        Returns the conflicting paths instead if the changes do not merge; nothing is changed then.
+        """
+        job = self.get(job_id)
+        self._check_closable(job)
+        if job.state not in USABLE_BASE:
+            raise ManagerError(
+                f"job {job.id} is {job.state}; only finished or limit jobs can be applied "
+                "(discard it instead)"
+            )
+        async with self._git_lock:
+            if not await gitops.is_clean(self.repo):
+                raise ManagerError(
+                    "main checkout has uncommitted changes to tracked files; "
+                    "commit or stash them first"
+                )
+            try:
+                conflicts = await gitops.merge_squash(self.repo, job.branch)
+            except GitError as exc:
+                raise ManagerError(str(exc)) from exc
+            if conflicts:
+                return conflicts
+            await self._close(job, "applied")
+        return []
+
+    async def discard(self, job_id: str) -> None:
+        """Throw the job's worktree and branch away."""
+        job = self.get(job_id)
+        self._check_closable(job)
+        async with self._git_lock:
+            await self._close(job, "discarded")
+
     async def shutdown(self) -> None:
         """Kill every running job. Queued jobs stay queued on disk and are `lost` at next start."""
         self._closing = True
@@ -159,6 +194,30 @@ class Manager:
         await asyncio.gather(*tasks, return_exceptions=True)
 
     # -- scheduling --------------------------------------------------------------------------
+
+    def _worktree_path(self, job: Job) -> Path:
+        return self.cfg.data_dir / "worktrees" / f"{self.repo.name}-{job.id}"
+
+    def _check_closable(self, job: Job) -> None:
+        """The refusals shared by apply and discard."""
+        if job.state in ("applied", "discarded"):
+            raise ManagerError(f"job {job.id} was already {job.state}")
+        if job.active:
+            raise ManagerError(f"job {job.id} is {job.state}; wait for it or cancel it first")
+        waiting = [j.id for j in self.jobs.values() if j.active and j.base_job == job.id]
+        if waiting:
+            raise ManagerError(
+                f"job(s) {', '.join(waiting)} still waiting on base job {job.id}; cancel them first"
+            )
+
+    async def _close(self, job: Job, state: str) -> None:
+        try:
+            await gitops.remove_worktree(self.repo, self._worktree_path(job), job.branch)
+        except GitError as exc:
+            raise ManagerError(str(exc)) from exc
+        job.state = state
+        job.save()
+        self._notify()
 
     def _notify(self) -> None:
         """Wake everything blocked in wait()."""
@@ -236,7 +295,7 @@ class Manager:
 
     async def _execute(self, job: Job) -> None:
         try:
-            worktree = self.cfg.data_dir / "worktrees" / f"{self.repo.name}-{job.id}"
+            worktree = self._worktree_path(job)
             base_sha = await gitops.head(self.repo, job.base_ref or "HEAD")
             await gitops.add_worktree(self.repo, worktree, job.branch, base_sha)
             job.base_ref, job.worktree = base_sha, worktree
