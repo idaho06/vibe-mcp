@@ -112,6 +112,89 @@ clear message if that job failed, was cancelled, applied or discarded.
 - `isolation = "serial"`: one job at a time, and each job starts from the latest finished job's
   branch, so work accumulates like a single shared worktree.
 
+## Using it day to day
+
+Claude does the thinking and the checking; Vibe does the typing. A delegation is five calls:
+
+1. `vibe_submit(spec, scope, ...)` returns a job id at once.
+2. `vibe_wait` blocks until the job ends (Claude Code moves a long wait to the background for you).
+3. `vibe_result(job_id, diff=true)`: read the diff. Vibe's own summary is unverified.
+4. `vibe_apply` stages the changes. It never commits.
+5. Run the tests. **The server never runs tests or the code Vibe wrote.**
+
+### A request that works
+
+Vibe sees neither your conversation nor your project docs, only the text Claude sends it, so the spec
+decides the result. A bare "implement X" leaves Claude to improvise one. Something like this works:
+
+```
+Use the vibe tools to implement <feature>. Spec for Vibe (self-contained):
+- Goal: ...
+- Scope (the only files it may touch): src/inventory/, tests/test_inventory.py
+- Conventions to follow: ...
+- Done when: `uv run pytest tests/test_inventory.py` passes
+- Do not: change public APIs, add dependencies.
+Then review the diff yourself, apply it, run the tests, and simplify the result.
+```
+
+### Feature, then cleanup
+
+A job's worktree starts at the committed `HEAD`, so staged but uncommitted changes are invisible to the
+next job. There are two ways to follow an implementation with a cleanup:
+
+- **Chain with `base_job`:** submit `simplify` with `base_job=<implementation job>` and the spec
+  "Simplify the changes in `HEAD~1..HEAD`". The worktree starts from the implementation's branch, so the
+  last commit is Vibe's own work. Apply the final job, then `discard` the first one. This works with the
+  single-agent skills but not with fan-out skills.
+- **Apply, commit, then clean up:** apply and commit the implementation first, then submit the cleanup
+  (or `simplify-fanout`) against `HEAD~1..HEAD`.
+
+### Rules of thumb
+
+- **Delegate bounded, well-specified work:** a feature with clear acceptance criteria, a mechanical
+  refactor, a cleanup or review pass. Keep design decisions, vague tasks and tiny edits for Claude: every
+  job pays Vibe's fixed per-session overhead (see [Cost](#cost)), so a one-line change is cheaper done directly.
+- **Always set `scope`.** Jobs with disjoint scopes run in parallel (`max_concurrent`, default 3), and
+  files changed outside the scope are flagged.
+- **Name the target and give the test command.** Vibe only runs commands the task supplies. If the tests
+  cannot run in the sandbox, tell it not to run them and run them yourself after `vibe_apply`.
+- **Pick the skill by size:** `simplify` and `code-review` for routine work, `simplify-fanout` and
+  `review-fanout` for large or important changes. Fan-out costs several times more.
+- **Allow the five `mcp__vibe__*` tools** in Claude Code's permission settings, or you will be asked
+  before every call.
+- **Measure.** Each result shows its cost, and `vibe-mcp stats` totals everything. Try two or three real
+  tasks before you rely on the savings.
+
+### In plans and in `CLAUDE.md`
+
+If you work from written plans, add a delegation policy next to your commit and test policies, and mark
+each step with who does it:
+
+```
+Delegation policy: bounded implementation steps run through the vibe MCP; design and integration stay with Claude.
+Per delegated step: a Scope disjoint from other steps, a self-contained Spec, an acceptance test command.
+After each: vibe_result diff -> review -> vibe_apply -> run the tests -> (simplify via vibe) -> commit.
+
+Step N - <title>          Executor: vibe | claude
+  Scope: <paths>          Test: <command>
+  Spec: goal / conventions / done-when / must-not
+```
+
+A natural split under test-driven development: Claude writes the failing tests and the spec, Vibe makes
+them pass and simplifies, and Claude reviews and runs the suite.
+
+To have Claude do this by default, put a few lines in your user-level `~/.claude/CLAUDE.md`. It loads in
+every session, so keep it short and conditional on the tools being present:
+
+```markdown
+When the `vibe` MCP tools (`vibe_submit`, `vibe_wait`, `vibe_result`, `vibe_apply`, `vibe_cancel`) are
+available, use them for bounded implementation, cleanup and review work, to save tokens. Keep design
+decisions, ambiguous tasks and tiny edits for yourself. Vibe sees neither this conversation nor the
+project docs: write a self-contained `spec` and always set `scope`. A job starts at the committed `HEAD`,
+so name the commits or files to work on. Read `vibe_result(diff=true)` before `vibe_apply`, and run the
+tests yourself afterwards: the server never runs them.
+```
+
 ## Skills and project context
 
 A job runs in a fresh worktree, which holds only the files git tracks. Anything kept out of git
