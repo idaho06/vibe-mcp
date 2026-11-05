@@ -136,3 +136,18 @@ def test_the_group_cost_line_adds_reviewers_to_the_merge_job() -> None:
     text = result_text(merged, Details(), Config())
     assert "reviewers: 3 jobs, $0.0912 (merge $0.0388, total $0.1300)" in text
     assert "reviewers:" not in result_text(finished(), Details(), Config())
+
+
+def test_a_fanout_merge_job_shows_the_whole_group_cost_in_its_status_line() -> None:
+    done = job(
+        state="finished", started_at=100, ended_at=135, title="fanout review",
+        cost_usd=0.0278, reviewers_cost=0.1262,
+    )  # fmt: skip
+    assert status_line(done) == "a1b2c3 finished 35s $0.1540 (incl. reviewers) - fanout review"
+
+
+def test_no_cost_is_shown_while_a_merge_job_is_still_running() -> None:
+    running = job(state="running", started_at=100, reviewers_cost=0.1262)
+    assert (
+        status_line(running, now=110) == "a1b2c3 running 10s"
+    )  # the merge's own cost is not known yet

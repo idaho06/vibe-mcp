@@ -27,8 +27,8 @@ def status_line(job: Job, now: float | None = None) -> str:
         parts.append(f"step {job.step}: {job.last_action}")
     elif job.state == "queued" and job.last_action:  # e.g. "reviewers 2/4 done" for a fan-out
         parts.append(f"({job.last_action})")
-    if job.cost_usd:
-        parts.append(f"${job.cost_usd:.4f}")
+    if not job.active and (cost := job.cost_usd + job.reviewers_cost):  # a fan-out counts its team
+        parts.append(f"${cost:.4f}" + (" (incl. reviewers)" if job.reviewers_cost else ""))
     if job.error and not job.active:
         parts.append(f"({job.error.splitlines()[0][:80]})")
     line = " ".join(parts)
