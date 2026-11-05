@@ -145,6 +145,10 @@ Both never ask questions, stay inside the scope the task names, run only the com
 them, and end with a short fixed-format report. They are single-agent: nothing like a multi-agent
 review. Write your own for anything else, or override these per project.
 
+A third, `code-simplifier`, is in [`contrib/skills-apache`](contrib/skills-apache): an adaptation of
+Anthropic's Apache-2.0 [code-simplifier](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/code-simplifier)
+agent, kept under that license with a notice of what changed. It is also single-agent.
+
 **Writing a skill.** Create `<name>/SKILL.md` with frontmatter holding a `name` (lowercase letters,
 digits and hyphens) and a `description`, then the instructions. The frontmatter is YAML: **quote the
 description if it contains `: `** (a colon followed by a space), or Vibe rejects the file. Remember the
@@ -238,4 +242,4 @@ scheduler, git handling and MCP surface are covered without running Vibe.
 
 ## License
 
-MIT
+MIT, except [`contrib/skills-apache/`](contrib/skills-apache), which is Apache-2.0 (see its README).

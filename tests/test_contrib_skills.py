@@ -48,3 +48,36 @@ def test_a_description_with_an_unquoted_colon_is_caught(tmp_path: Path) -> None:
     broken.write_text("---\nname: demo\ndescription: Effort levels: low and high\n---\nBody.\n")
     with pytest.raises(yaml.YAMLError):
         frontmatter(broken)
+
+
+APACHE = Path(__file__).parent.parent / "contrib" / "skills-apache"
+
+
+def test_the_apache_adaptation_keeps_its_license_and_credit() -> None:
+    """Apache-2.0 section 4: ship the license, say what changed, keep the credit."""
+    license_text = (APACHE / "LICENSE").read_text()
+    assert "Apache License" in license_text and "Version 2.0, January 2004" in license_text
+    skill = APACHE / "code-simplifier" / "SKILL.md"
+    head = skill.read_text().split("\n---\n", 1)[0]
+    # the notice sits in YAML comments: visible in the file, never sent to Vibe
+    for needed in (
+        "claude-plugins-official",
+        "Apache License, Version 2.0",
+        "Changes:",
+        "Not endorsed",
+    ):
+        assert needed in head, f"missing from the notice: {needed}"
+    meta = frontmatter(skill)
+    assert meta["name"] == "code-simplifier" and meta["license"] == "Apache-2.0"
+    assert 1 <= len(meta["description"]) <= 1024
+
+
+def test_the_adaptation_loads_through_the_mcp_without_its_notice(tmp_path: Path) -> None:
+    shutil.copytree(APACHE / "code-simplifier", tmp_path / ".vibe" / "skills" / "code-simplifier")
+    body = load("code-simplifier", tmp_path, home=tmp_path / "nohome")
+    assert len(body) > 500 and not body.startswith("---")
+    assert "claude-plugins-official" not in body  # the notice is not paid for on every job
+    assert "Never ask questions" in body  # the unattended rules were added
+    assert (
+        "ES modules" not in body and "React" not in body
+    )  # the JavaScript-specific rules are gone
